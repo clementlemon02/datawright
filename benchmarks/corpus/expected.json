@@ -1,0 +1,80 @@
+{
+ "balboa": {
+  "best_practices": "3 findings (select * into a table 2, rerun duplicates rows 1)",
+  "column_edges": 249,
+  "concepts": 0,
+  "datasets": 77,
+  "dialect": "snowflake",
+  "edges": 44,
+  "joins": 0,
+  "readers": 24,
+  "runs": 106,
+  "unparsed": 11,
+  "value_maps": 0
+ },
+ "cal-itp": {
+  "best_practices": "11 findings (layer order 10, rerun duplicates rows 1)",
+  "column_edges": 6911,
+  "concepts": 34,
+  "datasets": 872,
+  "dialect": "bigquery",
+  "edges": 1146,
+  "joins": 150,
+  "readers": 19,
+  "runs": 75,
+  "unparsed": 313,
+  "value_maps": 5
+ },
+ "e2e-pipeline": {
+  "best_practices": "5 findings (secret in code 3, rerun duplicates rows 1, scheduled table, unscheduled upstream 1)",
+  "column_edges": 26,
+  "concepts": 5,
+  "datasets": 18,
+  "dialect": "tsql",
+  "edges": 10,
+  "joins": 11,
+  "readers": 11,
+  "runs": 68,
+  "unparsed": 0,
+  "value_maps": 1
+ },
+ "healthcare-looker": {
+  "best_practices": "1 findings (lineage cycle 1)",
+  "column_edges": 436,
+  "concepts": 0,
+  "datasets": 96,
+  "dialect": "",
+  "edges": 97,
+  "joins": 0,
+  "readers": 0,
+  "runs": 0,
+  "unparsed": 0,
+  "value_maps": 0
+ },
+ "hooli": {
+  "best_practices": "0 findings",
+  "column_edges": 24,
+  "concepts": 1,
+  "datasets": 65,
+  "dialect": "snowflake",
+  "edges": 51,
+  "joins": 1,
+  "readers": 2,
+  "runs": 0,
+  "unparsed": 7,
+  "value_maps": 0
+ },
+ "jaffle-shop": {
+  "best_practices": "0 findings",
+  "column_edges": 32,
+  "concepts": 7,
+  "datasets": 19,
+  "dialect": "",
+  "edges": 17,
+  "joins": 3,
+  "readers": 0,
+  "runs": 0,
+  "unparsed": 1,
+  "value_maps": 0
+ }
+}

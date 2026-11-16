@@ -39,6 +39,25 @@ def main():
     assert "raw.refunds" in dctx("lineage", "raw.refunds", "--down", "9") and "mart.customer_ltv" in dctx("lineage", "raw.refunds", "--down", "9")
     assert dctx("query", "select count(*) as days from mart.revenue_daily").split() == ["days", "31"]
 
+    # lineage accuracy against a hand-checked answer key: every table and column edge into the staging and mart models
+    T = {("raw.orders", "staging.orders"), ("raw.payments", "staging.payments"), ("raw.refunds", "staging.refunds"), ("raw.customers", "mart.customer_ltv"),
+         ("staging.orders", "mart.customer_ltv"), ("staging.refunds", "mart.customer_ltv"), ("staging.orders", "mart.revenue_daily"), ("staging.payments", "mart.revenue_daily")}
+    same = lambda src, dst, cols: {(f"{src}.{c}", f"{dst}.{c}") for c in cols}
+    C = (same("raw.orders", "staging.orders", ["order_id", "customer_id", "ordered_at", "amount"]) | {("raw.orders.ordered_at", "staging.orders.order_date")}
+         | same("raw.payments", "staging.payments", ["payment_id", "order_id", "installment", "amount"]) | {("raw.payments.paid_at", "staging.payments.paid_on")}
+         | same("raw.refunds", "staging.refunds", ["refund_id", "order_id", "amount"]) | {("raw.refunds.refunded_at", "staging.refunds.refunded_on")}
+         | same("raw.customers", "mart.customer_ltv", ["customer_id", "country"]) | {("staging.orders.order_id", "mart.customer_ltv.orders"),
+            ("staging.orders.amount", "mart.customer_ltv.net_revenue"), ("staging.refunds.amount", "mart.customer_ltv.net_revenue"),
+            ("staging.orders.order_date", "mart.revenue_daily.order_date"), ("staging.orders.amount", "mart.revenue_daily.revenue")})
+    import sqlite3
+    with sqlite3.connect(demo / ".data-context/index.db") as ix:
+        mine = lambda n: n.startswith(("staging.", "mart."))
+        got_t = {(s, d) for s, d in ix.execute("select src, dst from edges") if mine(d)}
+        got_c = {(s, d) for s, d in ix.execute("select src, dst from col_edges") if mine(d)}
+    for what, got, truth in (("table", got_t, T), ("column", got_c, C)):
+        print(f"lineage accuracy, {what} edges: precision {len(got & truth)}/{len(got)}, recall {len(got & truth)}/{len(truth)}")
+        assert got == truth, f"{what} lineage differs from the answer key: extra {sorted(got - truth)}, missing {sorted(truth - got)}"
+
     con = duckdb.connect(str(demo / "shop.duckdb"), read_only=True)
     one = lambda sql: con.execute(sql).fetchone()[0]
     mart, gross, refunds = one("select sum(revenue) from mart.revenue_daily"), one("select sum(amount) from staging.orders"), one("select sum(amount) from staging.refunds")

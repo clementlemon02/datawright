@@ -20,7 +20,7 @@
 
 ## Data context
 - Before touching a dataset: `uv run .data-context/dctx.py card <name>` (lineage, schema, readers, owners, gotchas in ~200 tokens). Impact of a change: `impact <name>[.<column>]`. Find: `search <words>`.
-- Writing SQL across tables: `uv run .data-context/dctx.py join <table> <table>` gives the join path the code uses, as SQL; a card's `means` line says what each key holds (and its other names) and `values` what codes mean (`status 2 = approved`). Check these before guessing from column names.
+- **Before writing any SQL that joins tables, run `uv run .data-context/dctx.py join <table> <table>`** and use the path it gives: it's how this repo's code joins them. Don't join on a column because of its name: column names here drift, and some key-like columns are stale (the card's `unused keys` line names them). A card's `means` line says what each key holds and its other names, and `values` what codes mean (`status 2 = approved`).
 - Index missing or older than the latest commit: `uv run .data-context/dctx.py build` (seconds, no model tokens).
 - Before opening a merge request: `uv run .data-context/dctx.py review` (impact of the branch; CI posts the same report).
 - Stale or missing data: `uv run .data-context/dctx.py check <name>`, then the `on-call` skill. After updating the kit: `dctx update`.

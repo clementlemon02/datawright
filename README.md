@@ -1,10 +1,33 @@
 # aiworkflow
 
-**Make your AI coding agent useful for data engineering.**
+**Every merge request shows what it breaks, and your AI agent knows how your tables join.**
 
-Coding agents write decent code but know nothing about your data: which table is the source of truth, what one row means, what breaks downstream, why a number looks off. This kit connects any agent to your data stack read-only, keeps what it learns about your data in your repo, and gives it a senior data engineer's way of working: get context, build, test, debug, optimize, review.
+aiworkflow compiles your data team's code (SQL, dbt, Airflow, Spark, Flink, Java services, BI) into context that agents and reviewers can use: lineage, schedules, what columns mean and how tables join. It reads code, not data, and spends no model tokens to build. Then eleven skills give your agent a senior data engineer's way of working on top of it.
 
-Works with Claude Code, Codex, Cursor, Gemini CLI, Grok Build and any agent that reads [Agent Skills](https://agentskills.io), on any stack: setup finds what it doesn't understand yet in your repo and teaches itself with small connectors (an in-house framework, jobs in YAML, another orchestrator), so it fits your setup instead of assuming one.
+Works with Claude Code, Codex, Cursor, Gemini CLI, Grok Build and any agent that reads [Agent Skills](https://agentskills.io), on any stack: setup finds what it doesn't understand yet in your repo and teaches itself with small connectors, so it fits your setup instead of the other way round.
+
+## The two things it does first
+
+**1. A data impact report on every merge request.** `dctx review`, in CI or by hand:
+
+```
+| Changed table | Code | Runs in | Downstream |
+| mart.revenue_daily (tier 0) | pipelines/revenue.sql | etl.build_revenue @daily | bi.revenue_dashboard, +9 more |
+Dashboards reached (3) · Contract broken (1) · rerun duplicates rows: appends with nothing clearing the slice first
+```
+
+**2. Join paths and meanings from your own code, for agents and people.** `dctx join app.sessions crm.regions`:
+
+```sql
+from app.sessions t0
+join app.devices t1 on t1.device_uid = t0.device_uid            -- written in 1 query
+join crm.player_accounts t2 on t2.id = t1.owner_ref             -- written in 1 query
+join crm.agents t3 on t3.code = t2.agent_code                   -- written in 1 query
+```
+
+and on each table's card: `user_ref → player · home crm.player_accounts.id · also member_ref / owner_ref`, `status: 1 = pending, 2 = approved, 3 = rejected`, `unused keys: player_id: no code here reads or joins it`.
+
+On a synthetic benchmark built to be hard (join chains across files, codes explained piecemeal, a stale key column, 1,500 files), agents answered more questions correctly with it: Sonnet 7 of 12 without, 12 of 12 with; Haiku 3 of 12 without, 7 of 12 with. It's small and home-made; the details and limits are in [docs/semantics.md](docs/semantics.md#results-so-far-the-join-path-benchmark).
 
 ## Quick start
 
@@ -24,7 +47,7 @@ Swap `-a codex` for your agent, repeat `-a` for several, add `-g` to install for
 
 **2. Set up your repo.** In your data repo, ask your agent: *"set up this repo"*. It detects your stack and writes `AGENTS.md` with your real build and test commands. It compiles a data context index of your lineage, columns and readers in seconds, offers official vendor skills for your tools (e.g. dbt, Airflow), and connects your warehouse, orchestrator and catalog read-only.
 
-No data repo you can use yet? Try it on [examples/shop](examples/shop), a small warehouse with planted bugs that runs on DuckDB in seconds.
+Tried it? [Ten minutes and five answers](docs/try-it.md) would help us more than anything. No data repo you can use yet? Try it on [examples/shop](examples/shop), a small warehouse with planted bugs that runs on DuckDB in seconds.
 
 **3. Work as usual, in plain words:**
 - *"What is `orders_daily` and what breaks if I change it?"*
@@ -48,6 +71,23 @@ No data repo you can use yet? Try it on [examples/shop](examples/shop), a small 
 | Work a ticket | `work-ticket` | A Jira, Linear or GitHub story taken to a merge-ready branch: the right workflow, tests, a `dctx review` impact report in the drafted merge request, what's learned linked to the ticket. Pushing, posting and merging wait for your approval |
 | Check every merge request | CI templates (GitLab, GitHub) | Every merge request gets a comment with the tables it changes, their DAG tasks and downstream, recorded gotchas, SQL that stopped parsing and the ticket key, whoever wrote the change |
 | Review | `pipeline-review`, `sql-review` | Idempotency, backfills, retries, join fan-out, NULL traps, pruning, unsafe writes, checked against the real engine when connected |
+
+## Everything `dctx` answers
+
+| Question | Command |
+|---|---|
+| What is this table, who writes it, what runs it? | `card` |
+| What breaks if I change it, down to the dashboard tile? | `impact`, `lineage` |
+| What does this branch change? Is it safe to rerun? | `review` (`--diff` compares data with the dev copy) |
+| What do these columns mean, and how do I join these tables? | `card`, `join`, `concepts` |
+| Is the repo following good practice? | `lint`: reruns that duplicate rows, several writers, `SELECT *` writes, schedule and layer order, concept drift, secrets |
+| Is the data fresh and complete? | `check` |
+| What do I rerun after an incident, in what order? | `backfill` |
+| How should this table be partitioned and distributed? | `advise` |
+| Can my catalog or semantic layer have this? | `export dbt`, `export openmetadata`, `export datahub` |
+| What doesn't it understand in my repo yet? | `coverage`, then a connector |
+
+Ready-made connectors: dbt schema files, Dagster, Kafka Connect, hand-written lineage YAML, data contracts (ODCS), Looker, Superset, Metabase and MyBatis.
 
 ## How it helps
 

@@ -1,0 +1,30 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 5 * * 1"  # the corpus weekly, in case a dependency (sqlglot) changes what dctx finds
+
+jobs:
+  self-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Self-checks
+        run: |
+          git config --global user.email ci@example.com && git config --global user.name ci
+          for t in tests/test_dctx.py tests/test_demo.py tests/test_streaming.py tests/test_bi_export.py; do uv run -q "$t"; done
+
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/aiworkflow-corpus
+          key: corpus-${{ hashFiles('benchmarks/corpus/run.py') }}
+      - name: Public repos at pinned commits still index the same
+        run: uv run -q benchmarks/corpus/run.py

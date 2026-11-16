@@ -102,7 +102,8 @@ Every wrong answer was one of two things: joining on the stale `sessions.player_
 Read it with these limits in mind:
 - **Small and home-made.** 12 runs a cell, one synthetic repo, written by the people who built dctx with its strengths in mind. It shows the mechanism, not a general accuracy number.
 - **Haiku used dctx in only 6 of its 12 dctx runs**, despite the repo's instructions. When it did, it was right 5 times of 6; when it didn't, 2 of 6. Getting weaker models to reach for the tool is half the problem.
-- **dctx avoided the stale column only through `dctx join`.** Nothing on the `app.sessions` card says `player_id` is unused. A card line for columns no code reads would warn agents who never ask for a join path.
+- **After two changes, Haiku reached for dctx in 9 of 12 runs (from 6) and got 8 of 12 right (from 7).** The changes: firmer wording in setup's AGENTS.md, and an `unused keys` line on cards for key-like columns no code reads or joins. More use; the accuracy change is within noise at 12 runs.
+- **dctx avoided the stale column only through `dctx join`** when this was first run; the `unused keys` card line now names it.
 
 **Next.** A real repo with questions and answers checked by its engineers; more repeats; other agents (Codex, Cursor); and the two product gaps above.
 

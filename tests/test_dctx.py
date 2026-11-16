@@ -91,7 +91,7 @@ FILES = {
     "models/fct_daily.sql": "select * from {{ ref('fct_events') }} where event_date >= current_date - 7 and kind = 'x'\n",
     "models/fct_weekly.sql": "select * from {{ ref('fct_events') }} where event_date >= current_date - 30 and kind = 'y'\n",
     "concepts/ddl.sql": "create table fin.wallet (player_id bigint, amount decimal(10, 2));\ncreate table fin.bets (player_id bigint, amount decimal(10, 2));\n"
-                        "create table app.sessions (playerid varchar(36), started timestamp);\n",
+                        "create table app.sessions (session_id bigint, playerid varchar(36), device_ref bigint, started timestamp);\n",
     'service/src/main/resources/mapper/PlayerMapper.xml': '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">\n<mapper namespace="com.x.PlayerMapper">\n  <sql id="cols">p.id, p.name</sql>\n  <select id="find" resultType="map">\n    -- players with their wallets\n    SELECT <include refid="cols"/>, w.amount FROM crm.player_accounts p JOIN fin.wallet w ON w.player_id = p.id\n    <where>\n      <if test="a != null">AND p.id = #{a}</if>\n      <choose><when test="t == 1">AND w.amount &gt; 0</when><otherwise>AND p.id IN (SELECT player_id FROM fin.bets)</otherwise></choose>\n    </where>\n  </select>\n  <select id="byTable">SELECT * FROM ${table} WHERE id = #{id}</select>\n</mapper>\n',
     'meaning/ddl.sql': 'create table fin.requests (id bigint, type int, status int, amount_cents bigint, created_ms bigint, created_at timestamp);\n',
     'meaning/report.sql': "insert overwrite table rep.requests select r.id, case r.status when 1 then 'pending' when 2 then 'approved' when 3 then 'rejected' end as status_label,\nsum(case when r.type = 1 then r.amount_cents end) as deposit_amount, r.amount_cents / 100 as amount_usd,\nfrom_unixtime(r.created_ms / 1000) as created, convert_tz(r.created_at, 'UTC', 'Asia/Manila') as created_local\nfrom fin.requests r group by 1, 2, 4, 5, 6;\n",
@@ -99,6 +99,9 @@ FILES = {
     'meaning/third.sql': "insert overwrite table rep.requests_c select case when status = 1 then 'pending' when status in (2) then 'approved' when status = 3 then 'rejected' end as s from fin.requests;\n",
     "models/semantic.yml": "semantic_models:\n  - name: events_sm\n    model: ref('fct_events')\n    entities:\n      - {name: account, type: foreign, expr: user_id}\n"
                            "  - name: customers_sm\n    model: ref('customers')\n    entities:\n      - {name: account, type: primary, expr: id}\n",
+    "macros/shared_dims.sql": "{% macro shared_dims() %}\nselect * from {{ ref('customers') }} join ({{ inner_dims() }}) d using (id)\n{% endmacro %}\n"
+                              "{# {{ ref('never_read') }} #}\n{% macro inner_dims() %}select * from {{ source('crm_src', 'segments') }}{% endmacro %}\n",
+    "models/via_macro.sql": "with latest as ({{ dedupe(relation = source('raw_src', 'events'), by = 'id') }})\nselect * from latest join ({{ shared_dims() }}) s using (id)\n",
     'concepts/accounts.sql': 'create table crm.player_accounts (id bigint, name varchar, primary key (id));\n',
     'concepts/wallet.sql': 'insert overwrite table bi.wallet select w.player_id, p.name from fin.wallet w join crm.player_accounts p on w.player_id = p.id;\n',
     'concepts/bets.sql': 'insert overwrite table bi.bets select b.player_id, b.amount from fin.bets b join crm.player_accounts p on b.player_id = p.id;\n',
@@ -322,6 +325,9 @@ def main():
               ("s3://{bucket}/data/kafka/payments", "iceberg_catalog.default.payments_raw")]:  # bucket from the environment, joined to the one bucket with that path
         assert e in edges, f"missing {e}: {sorted(x for x in edges if '://' in x[0] + x[1] or 'lake' in x[1])}"
     assert ("s3://{bucket}/data/kafka/orders", "iceberg_catalog.default.payments_raw") not in edges, "each call keeps its own lineage"
+    for e in [("raw_src.events", "via_macro"), ("customers", "via_macro"), ("crm_src.segments", "via_macro")]:  # dbt: a macro's argument, a macro's body, a macro's macro
+        assert e in edges, f"missing {e}"
+    assert not any("never_read" in s for s, _ in edges), "a commented-out ref is no edge"
     for e in [("raw.clicks", "lakehouse.silver.clicks_clean"), ("raw.sessions", "lakehouse.silver.sessions_clean"),  # argparse
               ("raw.a", "stg.a"), ("raw.b", "stg.b"), ("raw.c", "stg.c"), ("raw.d", "stg.d")]:  # per call, per loop iteration
         assert e in edges, f"missing {e}"
@@ -378,6 +384,7 @@ def main():
     assert "player (proposed): home crm.player_accounts.id" in listing and "called player_id (4)" in listing, listing
     ccard = cli("card", "app.sessions")
     assert "joins (1): crm.player_accounts on playerid = id (1)" in ccard and "playerid → player (proposed) · home crm.player_accounts.id" in ccard, ccard
+    assert "unused keys: device_ref: no code here reads or joins it; the code joins this table on playerid" in ccard, ccard
     assert "member_ref → player" in cli("card", "bi.rollup"), "a rename of a joined key joins its concept"
     assert "rollup" not in cli("card", "bi.rollup").split("means")[1].split("n →")[0] and "n → " not in cli("card", "bi.rollup"), "a count is no concept"
     dctx.ROOT, dctx.HOME = repo, repo / ".data-context"

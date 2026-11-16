@@ -5,7 +5,7 @@
 ## The loop
 
 1. `uv run .data-context/dctx.py coverage` lists what dctx doesn't read yet, largest gaps first, with a hint for each: files that look like lineage, DAG definitions or SQL inside config, DAG tasks it can't link to code, unparsed SQL, and tools it sees but has no reader for.
-2. For the largest gap, copy a ready-made connector from this skill's `assets/connectors/`, or write one (below). Read two or three of the files first, so `match` and `extract` fit their real shape.
+2. For the largest gap, add a ready-made connector (`uv run .data-context/dctx.py init --connectors <name>`, listed at the end), or write one (below). Read two or three of the files first, so `match` and `extract` fit their real shape.
 3. `dctx build`, then `coverage` again. Check a few cards for the tables the connector touched, and that its names line up with the names in code: the coverage line "connector edges: N, M touching a table found in code" shows how many connect.
 4. Repeat until the gaps left don't matter. Commit the connectors: they're how every agent on the team gets the same picture.
 

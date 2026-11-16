@@ -91,7 +91,7 @@ def main():
     hidden = Path(tempfile.mkdtemp()) / "parked"  # coverage before any export: it says how to bring the dashboards in
     shutil.move(repo / ".data-context/imports", hidden)
     run(".data-context/dctx.py", "build")
-    assert "Superset is used here, but its dashboards aren't in the index: copy the superset connector" in run(".data-context/dctx.py", "coverage").stdout
+    assert "Superset is used here, but its dashboards aren't in the index: add the superset connector (`dctx init --connectors superset`)" in run(".data-context/dctx.py", "coverage").stdout
     shutil.move(hidden, repo / ".data-context/imports")
     built = run(".data-context/dctx.py", "build")
     assert built.returncode == 0, built.stderr

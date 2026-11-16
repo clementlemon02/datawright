@@ -8,6 +8,8 @@ license: MIT
 
 Goal: any agent working in this repo knows how to build and test it, has a growing map of the data it touches, and can look at (never change) the systems behind it. Detect the stack and the agents; don't assume them. Safe to rerun: update what exists instead of overwriting it.
 
+**Deliver first, ask last.** Steps 1 to 3 need nothing from the user: do them in one go (detect, write `AGENTS.md`, build the data context), and answer whatever else they asked using the new index. Only then ask your questions, together, at the end: corrections to what you detected, other agents they use, and whether to connect a warehouse. Don't stop to ask before the index exists.
+
 ## 1. Detect the stack and the agents
 
 Read the repo:
@@ -18,7 +20,7 @@ Read the repo:
 - **Tickets**: keys in `git log` and branch names (`DATA-123`), to find the tracker (Jira, Linear, GitHub Issues) and the team's branch and commit conventions
 - **Agents already configured**: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.mcp.json`, `.codex/`, `.cursor/`, `.gemini/`, `.grok/`
 
-List the data systems, orchestration and transformation tools, and compute engines you found. Show the list, and ask the user to correct it and to name every agent they use on this repo.
+List the data systems, orchestration and transformation tools, and compute engines you found, and keep the list for your closing summary, where the user can correct it and name other agents they use. Carry on.
 
 ## 2. Write AGENTS.md
 
@@ -26,6 +28,7 @@ List the data systems, orchestration and transformation tools, and compute engin
 
 - If one exists, propose additions instead of overwriting it.
 - Otherwise fill [assets/AGENTS.md](assets/AGENTS.md). Only list commands you found in the repo (Makefile targets, CI steps, README); never invent one. Keep it under ~60 lines and leave out sections you can't fill.
+- Write the pointer for the agent you are running as now; add the others when the user names them.
 - For agents that read a different file, create it as a one-line pointer, not a copy: Claude Code reads `CLAUDE.md` and Gemini CLI reads `GEMINI.md`; write `@AGENTS.md` in each. For other agents, check their docs.
 
 ## 3. Build the data context

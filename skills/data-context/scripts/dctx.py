@@ -11,6 +11,7 @@ and optional warehouse and catalog exports,
 using a SQL parser instead of a model. Then answers small, token-budgeted questions.
 
   build                                    compile .data-context/index.db (seconds, zero model tokens)
+  init [--connectors a,b]                  first time in a repo: install dctx into .data-context/ and build (run the skill's copy)
   card <dataset> [--budget 800]            one-screen context for a dataset
   code <dataset>                           the code that produces it, for agents that can't open files
   impact <dataset[.column]>                everything a change would touch: writers, code reading it in any clause, downstream
@@ -1649,6 +1650,31 @@ def concepts_of(joins, identity, keys, confirmed):
     return rows
 
 
+DBT_REF = re.compile(r"(?<![\w.])ref\(\s*(?:['\"][^'\"]+['\"]\s*,\s*)?['\"]([^'\"]+)['\"]")
+DBT_SOURCE = re.compile(r"(?<![\w.])source\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)")
+
+
+def dbt_macros(files, projects):
+    """What each dbt macro reads, following the macros it calls: {project: {macro: {dataset names}}}. A model that calls
+    the macro reads them too, as dbt counts it. ponytail: refs built from the macro's arguments (ref(model_name)) aren't known."""
+    out = {}
+    for proj in projects:
+        body = {}
+        for f in files:
+            if Path(proj) in Path(f).parents and "macros" in Path(f).relative_to(proj).parts and f.endswith(".sql"):
+                text = re.sub(r"\{#.*?#\}", "", (ROOT / f).read_text(encoding="utf-8", errors="replace"), flags=re.S)
+                for m in re.finditer(r"\{%-?\s*macro\s+(\w+)\s*\((.*?)\{%-?\s*endmacro", text, re.S):
+                    body[m[1]] = m[2]
+        reads = {n: {r.lower() for r in DBT_REF.findall(b)} | {f"{a}.{c}".lower() for a, c in DBT_SOURCE.findall(b)} for n, b in body.items()}
+        calls = {n: {c for c in re.findall(r"(?<![\w.])(\w+)\s*\(", b) if c in body and c != n} for n, b in body.items()}
+        for _ in range(4):  # macros calling macros
+            for n in body:
+                for c in calls[n]:
+                    reads[n] |= reads[c]
+        out[proj] = {n: r for n, r in reads.items() if r}
+    return out
+
+
 def git_changes(repos=()):
     latest = {}
     for root, prefix in roots(repos):
@@ -1696,6 +1722,7 @@ def build(dialect=None):
     repos = [str(r) for r in cfg.get("repos") or []]
     files = repo_files(cfg.get("exclude") or [], repos) + export_files()
     projects = [str(Path(f).parent) for f in files if Path(f).name == "dbt_project.yml"]
+    macros = dbt_macros(files, projects)
     ix, stmts, file_set = Index(), [], set(files)
     shared, exprs = {}, {}  # JVM constants by name, when unique across files: jobs read topics from a Config class
     for f in (f for f in files if f.endswith((".java", ".scala", ".kt"))):
@@ -1747,11 +1774,20 @@ def build(dialect=None):
                 model = Path(f).stem.lower()
                 ix.dataset(model, "dbt model", file=f, line=1)
                 ix.writers.setdefault((model, f), 1)
-                for m in re.finditer(r"\{\{\s*ref\(\s*(?:['\"][^'\"]+['\"]\s*,\s*)?['\"]([^'\"]+)['\"][^)]*\)\s*\}\}", text):
-                    ix.edge(m[1].lower(), model, f"{f}:{text.count(chr(10), 0, m.start()) + 1}")
-                for m in re.finditer(r"\{\{\s*source\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}", text):
-                    ix.dataset(f"{m[1]}.{m[2]}".lower())
-                    ix.edge(f"{m[1]}.{m[2]}".lower(), model, f"{f}:{text.count(chr(10), 0, m.start()) + 1}")
+                live = re.sub(r"\{#.*?#\}", lambda c: re.sub(r"[^\n]", " ", c[0]), text, flags=re.S)  # Jinja comments out, lines kept
+                for block in re.finditer(r"\{\{.*?\}\}|\{%.*?%\}", live, re.S):  # anywhere in an expression or block: a macro's argument, a set
+                    at = lambda m: f"{f}:{text.count(chr(10), 0, block.start() + m.start()) + 1}"
+                    for m in DBT_REF.finditer(block[0]):
+                        if m[1].lower() != model:
+                            ix.edge(m[1].lower(), model, at(m))
+                    for m in DBT_SOURCE.finditer(block[0]):
+                        ix.dataset(f"{m[1]}.{m[2]}".lower())
+                        ix.edge(f"{m[1]}.{m[2]}".lower(), model, at(m))
+                    for m in re.finditer(r"(?<![\w.])(\w+)\s*\(", block[0]):  # a macro the model calls: what the macro reads, the model reads
+                        for src in macros.get(in_project[0], {}).get(m[1], ()):
+                            if src != model:
+                                ix.dataset(src)
+                                ix.edge(src, model, at(m))
             stmts += extract_sql(text, f, dbt_model=Path(f).stem.lower() if in_dbt else None)
             if in_dbt:
                 dbt_layout(ix, text, Path(f).stem.lower(), f)
@@ -2075,6 +2111,14 @@ def card(con, arg, budget):
         means.append(f"{c['column_name']} → {c['concept']}" + ("" if c["confirmed"] else " (proposed)")
                      + (" · its home" if c["role"] == "home" else f" · home {home[0][0]}.{home[0][1]}" if home else "")
                      + (f" · also {' / '.join(other[:4])}" if other else ""))
+    used_cols = {r[0] for r in q("select column_name from col_uses where dataset=?", name)} | {r[0].rsplit(".", 1)[1] for r in q("select src from col_edges where src like ?", name + ".%")}
+    dead = []  # key-like columns no code reads or joins: a plausible join that the team doesn't use (stale, deprecated, or just unused here)
+    if "*" not in used_cols and len(used_cols) >= 1 and joins_:
+        dead = [r[0] for r in q("select name from columns where dataset=? order by name", name)
+                if r[0] not in used_cols and (stem := re.sub(r"_?(id|ref|key|code|no|uid|uuid)$", "", r[0])) != r[0]
+                and not (stem and name.rsplit(".", 1)[-1].startswith(stem))  # bet_id on bets is the table's own id, not a way to join out
+                and not q("select 1 from keys where dataset=? and column_name=?", name, r[0])]
+    unused = [f"{', '.join(dead[:6])}: no code here reads or joins {'it' if len(dead) == 1 else 'them'}; the code joins this table on {', '.join(dict.fromkeys(j['mine'] for j in joins_[:3]))}"] if dead else []
     values = []
     for (c,) in q("select distinct column_name from value_maps where dataset=? order by column_name", name):
         labels = {}
@@ -2094,6 +2138,7 @@ def card(con, arg, budget):
           capped("upstream", up, 8, f"dctx lineage {name} --up 3"),
           capped("downstream", down, 10, f"dctx lineage {name} --down 9"),
           capped("joins", joined, 6, f"dctx join {name} <other table>"),
+          [f"unused keys: {unused[0]}"] if unused else [],
           capped("columns", cols, 30, f"sqlite3 .data-context/index.db \"select * from columns where dataset='{name}'\""),
           capped("means", means, 8, "dctx concepts"),
           capped("values", values, 8, f"sqlite3 .data-context/index.db \"select * from value_maps where dataset='{name}'\""),
@@ -3159,10 +3204,10 @@ def check(con, names, scheduled, plan=False):
 NOISE = {".dll", ".exe", ".so", ".bin", ".cache", ".pyc", ".whl", ".egg", ".md", ".rst", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".lock", ".gitignore", ".gitkeep", ".pdf", ".html",
          ".css", ".js", ".ts", ".tsx", ".csv", ".parquet", ".jar", ".class", ".xlsx", ".woff", ".ttf", ".sh", ".dockerignore", ""}
 HINTS = [  # what an unread file looks like, from its first few KB, and what to do about it
-    (r"<mapper\s+namespace=", "MyBatis mappers (SQL behind Java services): copy the mybatis connector"),
-    (r"^\s*(models|sources|seeds|snapshots)\s*:\s*$[\s\S]{0,600}^\s*-\s*name\s*:", "dbt schema files (descriptions, columns): copy the dbt_yaml connector"),
-    (r"connector\.class", "Kafka Connect configs: copy the kafka_connect connector"),
-    (r"^\s*-?\s*(from|source|upstream)\s*:[\s\S]{0,300}^\s*(to|target|downstream)\s*:", "hand-written lineage: copy the lineage_yaml connector"),
+    (r"<mapper\s+namespace=", "MyBatis mappers (SQL behind Java services): add the mybatis connector (`dctx init --connectors mybatis`)"),
+    (r"^\s*(models|sources|seeds|snapshots)\s*:\s*$[\s\S]{0,600}^\s*-\s*name\s*:", "dbt schema files (descriptions, columns): add the dbt_yaml connector (`dctx init --connectors dbt_yaml`)"),
+    (r"connector\.class", "Kafka Connect configs: add the kafka_connect connector (`dctx init --connectors kafka_connect`)"),
+    (r"^\s*-?\s*(from|source|upstream)\s*:[\s\S]{0,300}^\s*(to|target|downstream)\s*:", "hand-written lineage: add the lineage_yaml connector (`dctx init --connectors lineage_yaml`)"),
     (r"\b(dag_id|schedule_interval|schedule|cron)\s*[:=]", "pipeline or DAG definitions in config: a connector can emit run records"),
     (r"(?im)^[\s\-|>:\"']*(select\s+[\s\S]{1,400}?\bfrom\s+[\w.`\"]+|insert\s+(into|overwrite)\s+\S+|merge\s+into\s+\S+|create\s+(or\s+replace\s+)?(table|view)\s+\S+)", "SQL inside config: a connector can hand it over as sql records"),
 ]
@@ -3175,8 +3220,8 @@ KNOWN_TOOLS = [  # tools with no built-in reader, by what their code or config c
 ]
 BI_TOOLS = {  # dashboards live in the tool, not the repo: how to bring them in
     "Superset": (r"superset_config|apache[-/]superset|\bfrom superset\b|SUPERSET_URL",
-                 "copy the superset connector, then `uv run <data-context skill>/assets/bi_export.py superset` (or drop a dashboard export ZIP in .data-context/imports/)"),
-    "Metabase": (r"\bmetabase\b|METABASE_URL", "copy the metabase connector, then `uv run <data-context skill>/assets/bi_export.py metabase`"),
+                 "add the superset connector (`dctx init --connectors superset`), then `uv run <data-context skill>/assets/bi_export.py superset` (or drop a dashboard export ZIP in .data-context/imports/)"),
+    "Metabase": (r"\bmetabase\b|METABASE_URL", "add the metabase connector (`dctx init --connectors metabase`), then `uv run <data-context skill>/assets/bi_export.py metabase`"),
     "Tableau": (r"\.twbx?\b|tableauserverclient|\btabcmd\b", "export workbook lineage from Tableau's Metadata API as lineage YAML (lineage_yaml connector)"),
 }
 
@@ -3642,6 +3687,8 @@ def main(argv=None):
     ck.add_argument("--all", action="store_true", help="also every table an Airflow task produces")
     ck.add_argument("--plan", action="store_true", help="show the column, limit and window per table without querying")
     sub.add_parser("update").add_argument("--from", dest="source", metavar="PATH", help="a dctx.py to update from")
+    it = sub.add_parser("init")
+    it.add_argument("--connectors", default="", help="ready-made connectors to copy in, e.g. dbt_yaml,lookml")
     sub.add_parser("coverage")
     rv = sub.add_parser("review")
     rv.add_argument("--base", help="branch or commit to compare with (default: origin/HEAD, main or master)")
@@ -3651,7 +3698,26 @@ def main(argv=None):
     sub.add_parser("version")
     a = p.parse_args(argv)
     started = time.time()
-    if a.cmd == "build":
+    if a.cmd == "init":  # run from the installed skill's copy: puts dctx, its config and chosen connectors in this repo, then builds
+        import shutil
+        src = Path(__file__).resolve()
+        HOME.mkdir(exist_ok=True)
+        if src != (HOME / "dctx.py").resolve():
+            shutil.copy(src, HOME / "dctx.py")
+        assets = src.parent.parent / "assets"
+        if not assets.is_dir():  # run from the repo's copy (to add a connector later): the installed skill has the assets
+            assets = next((path.parent.parent / "assets" for _, path in installed_copies() if (path.parent.parent / "assets").is_dir()), assets)
+        if not (HOME / "config.yml").exists() and (assets / "config.yml").exists():
+            shutil.copy(assets / "config.yml", HOME / "config.yml")
+        for c in filter(None, (x.strip().removesuffix(".py") for x in a.connectors.split(","))):
+            if not (assets / "connectors" / f"{c}.py").exists():
+                sys.exit(f"No ready-made connector '{c}'. Available: {', '.join(sorted(f.stem for f in (assets / 'connectors').glob('*.py')))}")
+            (HOME / "connectors").mkdir(exist_ok=True)
+            shutil.copy(assets / "connectors" / f"{c}.py", HOME / "connectors" / f"{c}.py")
+        print(f"dctx {VERSION} installed in .data-context/ (commit it; the index and imports are gitignored). From now on: uv run .data-context/dctx.py <command>")
+        build(None)
+        print("next: `coverage` shows what it doesn't read yet; `card <table>` and `lint` show what it found")
+    elif a.cmd == "build":
         build(a.dialect)
         track("build", None, started=started)
     elif a.cmd == "card":
