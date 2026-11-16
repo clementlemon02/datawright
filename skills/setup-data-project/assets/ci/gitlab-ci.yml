@@ -1,0 +1,28 @@
+# Data impact report on every merge request: which tables the change touches, what's downstream, recorded gotchas,
+# SQL that stopped parsing, the ticket key. Add to .gitlab-ci.yml (or `include:` this file).
+# Posting the report as a comment needs a project access token with the `api` scope in the CI/CD variable
+# DCTX_GITLAB_TOKEN (masked). Merge request pipelines usually run on unprotected branches, so the variable can't be
+# "protected"; give the token the Reporter role. Without it, the report is still in the job log and artifacts.
+data-impact:
+  stage: test
+  image: python:3.12-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    GIT_DEPTH: 0  # the diff needs the merge base
+  before_script:
+    - apt-get update -qq && apt-get install -qq -y git curl >/dev/null
+    - pip install -q uv
+  script:
+    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - uv run --no-config .data-context/dctx.py build
+    - uv run --no-config .data-context/dctx.py review --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --strict | tee data-impact.md
+  after_script:
+    - |
+      if [ -n "$DCTX_GITLAB_TOKEN" ] && [ -s data-impact.md ]; then
+        curl -sS --fail --header "PRIVATE-TOKEN: $DCTX_GITLAB_TOKEN" --data-urlencode "body@data-impact.md" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes" >/dev/null
+      fi
+  artifacts:
+    when: always
+    paths: [data-impact.md]

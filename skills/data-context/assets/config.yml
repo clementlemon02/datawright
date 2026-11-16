@@ -1,0 +1,20 @@
+# dctx settings. All optional.
+dialect:                  # empty = auto-detect on each build; or pin the engine: snowflake, bigquery, databricks, spark, hive, postgres, redshift, trino, duckdb, mysql, starrocks, clickhouse, ...
+exclude: []               # glob patterns to skip, e.g. ["legacy/**", "scratch/*.sql"]
+repos: []                 # other repos to index with this one, e.g. ["../flink-jobs", "../warehouse-ddl"]: when DAGs here run jobs whose code lives there
+price_per_mtok: 3         # your model's input price, USD per million tokens (used by `dctx savings`)
+seconds_per_file: 4       # how long one file read takes your agent, in seconds (used by `dctx savings`)
+track: true               # false stops logging lookups to .data-context/usage.jsonl
+query_command:            # CLI for `dctx query` on a read-only, non-production connection. {sql} becomes the query, $VARS expand. Examples:
+#   psql "$DATABASE_URL" --csv -c {sql}
+#   snow sql --format CSV -q {sql}
+#   bq query --use_legacy_sql=false --format=csv --maximum_bytes_billed=1000000000 {sql}   (LIMIT doesn't cut BigQuery's bytes billed)
+#   duckdb -readonly -csv dev.duckdb {sql}
+#   mysql --batch -e {sql}                                  (MySQL, StarRocks; credentials in ~/.my.cnf)
+#   trino --output-format CSV_HEADER --execute {sql}
+#   clickhouse client --format CSVWithNames --query {sql}
+env: {}                   # values of deploy-time variables set outside these repos (Helm, CI secrets), e.g. {KAFKA_TOPIC_ORDERS: shop.orders}:
+                          #   jobs that read a topic or table name from the environment then join the rest of the lineage. Names and values only, never secrets
+layers: []                # your warehouse layers, earliest first, if not a common convention: e.g. [ods, dwd, dws, ads]; `lint` flags lineage running backwards
+dev_name:                 # where a branch's tables are built, for `dctx review --diff`: {schema}, {table} and {name} fill in. e.g.
+#   {schema}_dev.{table}   dbt_ci.{table}   analytics_pr.{schema}__{table}     (query_command's user must read both copies)

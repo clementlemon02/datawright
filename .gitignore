@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.duckdb
+.venv/
+# a repo that uses the kit keeps its own .data-context; this repo has none
+.data-context/

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "aiworkflow",
+  "description": "Agent-agnostic skills for data engineers: connect your agent to your data stack, get context on any table or pipeline, and build, test, debug and optimize pipelines. Works in Claude Code, Codex, Cursor, Gemini CLI, Grok Build and any agent that reads SKILL.md.",
+  "owner": {
+    "name": "Clement",
+    "url": "https://github.com/clementlemon02"
+  },
+  "plugins": [
+    {
+      "name": "data-eng",
+      "source": "./",
+      "strict": false,
+      "description": "Connect your agent to your data stack, get context on any table or pipeline, and build, test, debug, optimize and review pipelines.",
+      "category": "data",
+      "license": "MIT",
+      "skills": [
+        "./skills/setup-data-project",
+        "./skills/data-context",
+        "./skills/build-pipeline",
+        "./skills/change-dataset",
+        "./skills/data-tests",
+        "./skills/debug-data-issue",
+        "./skills/on-call",
+        "./skills/optimize-pipeline",
+        "./skills/pipeline-review",
+        "./skills/sql-review",
+        "./skills/work-ticket"
+      ]
+    }
+  ]
+}
