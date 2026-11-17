@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1161 510" width="1161" role="img" aria-label="dctx output: impact, join path and card for the shop example">
-<rect width="1161" height="510" rx="10" fill="#0d1117"/><rect width="1161" height="34" rx="10" fill="#161b22"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1161 488" width="1161" role="img" aria-label="dctx output: impact, join path and card for the shop example">
+<rect width="1161" height="488" rx="10" fill="#0d1117"/><rect width="1161" height="34" rx="10" fill="#161b22"/>
 <circle cx="20" cy="17" r="6" fill="#ff5f56"/><circle cx="40" cy="17" r="6" fill="#ffbd2e"/><circle cx="60" cy="17" r="6" fill="#27c93f"/>
 <g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" xml:space="preserve">
 <text x="22" y="58" fill="#7ee787">$ dctx impact staging.orders</text>
@@ -17,9 +17,8 @@
 <text x="22" y="322" fill="#7ee787">$ dctx card mart.revenue_daily</text>
 <text x="22" y="344" fill="#c9d1d9">mart.revenue_daily  [table]  produced by models/marts/revenue_daily.sql:2  · last change 2026-11-17 27f619e &quot;base&quot;</text>
 <text x="22" y="366" fill="#c9d1d9">runs in (1): shop_daily.revenue_daily @daily (dags/shop_daily.py:10)</text>
-<text x="22" y="388" fill="#c9d1d9">(index older than the latest commit: run dctx build)</text>
-<text x="22" y="410" fill="#c9d1d9">upstream (2): staging.orders, staging.payments</text>
-<text x="22" y="432" fill="#c9d1d9">downstream (2): dags/shop_daily.py:13 (reads), reports/weekly_kpis.py:5 (reads)</text>
-<text x="22" y="454" fill="#c9d1d9">columns (3): order_date, revenue, orders</text>
-<text x="22" y="476" fill="#c9d1d9">column sources (2): same names from staging.orders (1), revenue ← staging.orders.amount</text>
+<text x="22" y="388" fill="#c9d1d9">upstream (2): staging.orders, staging.payments</text>
+<text x="22" y="410" fill="#c9d1d9">downstream (2): dags/shop_daily.py:13 (reads), reports/weekly_kpis.py:5 (reads)</text>
+<text x="22" y="432" fill="#c9d1d9">columns (3): order_date, revenue, orders</text>
+<text x="22" y="454" fill="#c9d1d9">column sources (2): same names from staging.orders (1), revenue ← staging.orders.amount</text>
 </g></svg>
