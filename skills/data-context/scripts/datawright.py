@@ -3,6 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["sqlglot>=30", "pyyaml>=6"]
 # ///
+# GENERATED from src/*.py by tools/build.py: edit the parts in src/, then run `python tools/build.py`.
 """datawright: compiled data context for AI agents.
 
 Builds a local index of datasets, columns, lineage, readers and change history

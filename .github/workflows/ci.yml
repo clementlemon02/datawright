@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Single file is up to date with src/
+        run: python3 tools/build.py --check
       - name: Self-checks
         run: |
           git config --global user.email ci@example.com && git config --global user.name ci

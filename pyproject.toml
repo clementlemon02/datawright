@@ -1,6 +1,6 @@
 [project]
 name = "datawright-cli"
-version = "0.1.1"  # keep equal to VERSION in skills/data-context/scripts/datawright.py
+version = "0.1.1"  # keep equal to VERSION in src/00_core.py
 description = "Lineage, impact reports and join paths compiled from your data repo's code, for AI agents and reviewers"
 readme = "README.md"
 requires-python = ">=3.10"

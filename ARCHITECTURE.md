@@ -126,7 +126,9 @@ The kit hasn't yet been measured on real tasks end to end. [ADE-bench](https://w
 ```
 .claude-plugin/marketplace.json            Claude Code plugin, pointing at skills/
 skills/<name>/SKILL.md                     one folder per skill (name = folder name)
-skills/data-context/scripts/datawright.py        the context compiler, CLI and MCP server, copied into each repo
+src/*.py                                          the source: 21 parts of at most ~360 lines, in name order (10 index, 20 extractors, 30 queries, 44 review, 50 MCP, 60 CLI)
+tools/build.py                                    joins src/*.py into the file below; CI fails if it is stale
+skills/data-context/scripts/datawright.py        the built single file (context compiler, CLI and MCP server), copied into each repo; don't edit it
 skills/<name>/references/, assets/         catalogs and templates, loaded on demand (CI templates in setup-data-project/assets/ci)
 examples/shop/                             demo warehouse with planted bugs, to try the kit on
 tests/                                     self-checks: uv run tests/test_datawright.py (also test_demo.py, test_streaming.py)
@@ -136,6 +138,6 @@ tests/                                     self-checks: uv run tests/test_datawr
 
 - **A connection**: add a row to `skills/setup-data-project/references/connections.md` with the publisher, run command, auth, read-only setting and a source link, checked against the server's README.
 - **A warehouse export**: add the engine to `skills/data-context/references/warehouse-export.md`, with a CLI command that writes a file.
-- **Parser coverage**: a failing statement from `datawright lint` plus a fix in `datawright.py`, with a case in `tests/test_datawright.py`.
+- **Parser coverage**: a failing statement from `datawright lint` plus a fix in the right part of `src/`, then `python tools/build.py`, with a case in `tests/test_datawright.py`.
 - **A checklist item**: from a real incident, in the skill it belongs to. One line if possible.
 - **A new skill**: only for a task data engineers repeat that no existing skill or vendor skill covers. Keep it under ~100 lines, and add it to `marketplace.json`.
