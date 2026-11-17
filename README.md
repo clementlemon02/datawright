@@ -31,7 +31,7 @@ Agents and reviewers guess. Datawright answers from your repo, with no warehouse
 ## What you get
 
 - **Impact on every merge request.** `datawright review` lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
-- **Lineage down to the column.** Which columns feed which, Every table card names the file and line that writes and reads it.
+- **Lineage down to the column.** Which columns feed which. Every table card names the file and line that writes and reads it.
 - **Join paths and meanings.** How tables join as your code joins them, what codes like `status = 2` mean, which key columns nothing uses any more.
 - **Any agent can use it.** A command line, plus an MCP server (`datawright serve`) for clients with no shell.
 - **11 agent skills on top** (set up, build, change, debug, test, review, optimize, on-call, tickets) that teach your agent to use it like a senior data engineer.
