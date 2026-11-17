@@ -12,23 +12,25 @@ Agents and reviewers guess which tables a change breaks, how two tables join, an
 
 Reads SQL, dbt, Airflow, Spark, Flink, Java services, Looker, Superset and Metabase. Works with Claude Code, Codex, Cursor, Gemini CLI and any agent that reads [Agent Skills](https://agentskills.io).
 
-```
-| Changed table | Code | Runs in | Downstream |
-| mart.revenue_daily (tier 0) | pipelines/revenue.sql | etl.build_revenue @daily | bi.revenue_dashboard, +9 more |
-Dashboards reached (3) · Contract broken (1) · rerun duplicates rows: appends with nothing clearing the slice first
-```
+On every merge request, `dctx review` comments:
+
+> **Changed:** `mart.revenue_daily` (tier 0) · **runs in** `etl.build_revenue @daily`
+> **Downstream:** `bi.revenue_dashboard` +9 more · **dashboards reached:** 3 · **contract broken:** 1
+> **Warning:** rerun duplicates rows: appends with nothing clearing the slice first
 
 ## Install
 
 You need [uv](https://docs.astral.sh/uv/) and git.
 
+Claude Code:
 ```
-/plugin marketplace add clementlemon02/datawright     # Claude Code
+/plugin marketplace add clementlemon02/datawright
 /plugin install data-eng@datawright
 ```
 
+Codex, Cursor, Gemini CLI and others (swap `-a`):
 ```bash
-npx skills add clementlemon02/datawright -a codex     # Codex, Cursor, Gemini CLI, … (swap -a)
+npx skills add clementlemon02/datawright -a codex
 ```
 
 Then, in your data repo, tell your agent: **"set up this repo"**. Ask things like *"what breaks if I change `orders_daily`?"* or *"review my changes before I open a PR"*.
