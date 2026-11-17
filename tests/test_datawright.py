@@ -75,6 +75,7 @@ FILES = {
     "lake/config/tables.yaml": "tables:\n  - {name: invoices, schema: finance}\n  - {name: refunds, schema: finance}\n",
     "lake/dags/factory.py": 'import yaml\nfrom pathlib import Path\nfrom airflow import DAG\nfrom airflow.operators.python import PythonOperator\nconf = yaml.safe_load(open(Path(__file__).parent.parent / "config" / "tables.yaml"))\nwith DAG("factory", schedule="@daily") as dag:\n    for t in conf["tables"]:\n        PythonOperator(task_id=f"load_{t[\'name\']}", python_callable=print)\n        spark.table(f"{t[\'schema\']}.{t[\'name\']}_raw").write.saveAsTable(f"{t.get(\'schema\')}.{t[\'name\']}")\n',
     "lake/jobs/click_job.py": 'import click\n\n@click.command()\n@click.argument("source")\n@click.option("--target", "-t", default="gold.default_out")\ndef main(source, target):\n    spark.table(f"silver.{source}").write.saveAsTable(target)\n',
+    "lake/jobs/weekly.py": 'import pandas as pd\ndf = pd.read_sql("select a, b from app.daily where a > 1", eng)\npd.read_sql("select count(*) from app.audit", eng)\ndf.to_sql("weekly", eng, schema="app", if_exists="replace")\n',
     "lake/jobs/common.py": 'def publish(table):\n    spark.table(f"stage.{table}").write.saveAsTable(f"pub.{table}")\n',
     "lake/jobs/publish_all.py": 'from lake.jobs.common import publish\n\npublish("users")\npublish(table="teams")\n',
     "lake/jobs/entry.py": "from lake.jobs.middle import run\n\nrun(\"cart\")\nrun(\"wishlist\")\n",
@@ -315,6 +316,8 @@ def main():
                  "revenue DECIMAL(18, 2)", "same names from staging.orders (1)", "staging.orders", "reports/weekly.py:1 (reads)", "STALE", "revenue ← staging.payments.amount"):
         assert text in card, f"card is missing {text!r}:\n{card}"
     assert "mart.revenue_daily" in cli("lineage", "raw.orders", "--down", "9", "--up", "0")
+    weekly = cli("lineage", "app.weekly", "--up", "1", "--down", "0")  # pandas to_sql names the table (with schema=); its read_sql queries feed it, a count(*) check does not
+    assert "app.daily" in weekly and "app.audit" not in weekly, weekly
     assert "staging.payments.amount" in cli("lineage", "mart.revenue_daily.revenue", "--up", "2", "--down", "0")
     assert cli("search", "revenue").splitlines()[0].startswith("mart.revenue_daily")
     (repo.parent / "outside.sql").write_text("select 'outside the repo'")  # as a crafted dbt manifest could point
@@ -477,7 +480,7 @@ def main():
     assert "pipelines/revenue.sql" in first_card["paths"] and first_card["baseline"] > 0, first_card
     assert "pipelines/revenue.sql" not in second_card["paths"], "a file must count once an hour"
     report = cli("savings")
-    assert "questions answered: 26" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
+    assert "questions answered: 27" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
     print(report)
     edges, cols = set(con.execute("select src, dst, via from edges")), set(con.execute("select * from col_edges"))
     for src, dst, via in [("mart.revenue_daily", "bi.revenue_dashboard", "import openlineage"),

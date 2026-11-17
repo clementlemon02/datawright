@@ -84,7 +84,7 @@
   "column_edges": 32,
   "concepts": 7,
   "datasets": 19,
-  "dialect": "",
+  "dialect": "postgres",
   "edges": 17,
   "edges_declared": 0,
   "edges_direct": 17,

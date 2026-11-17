@@ -67,6 +67,20 @@ def tname(t) -> str:
     return LOCAL.get(n, n)
 
 
+def select_tables(sql) -> set:
+    """Tables a SELECT reads (its own CTE names left out): what a pandas read_sql query pulls in."""
+    import sqlglot
+    from sqlglot import exp
+    try:
+        tree = sqlglot.parse_one(sql)
+        if all(isinstance(e.unalias(), exp.Count) for e in tree.expressions):  # select count(*): a health check, not a source
+            return set()
+        ctes = {c.alias.lower() for c in tree.find_all(exp.CTE)}
+        return {n for t in tree.find_all(exp.Table) if (n := tname(t)) and n not in ctes}
+    except Exception:
+        return set()
+
+
 def valid(name: str) -> bool:
     return bool(name) and "jinja_expr" not in name
 

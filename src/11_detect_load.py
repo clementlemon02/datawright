@@ -49,6 +49,9 @@ def dialect_hint(files):
     return top[0][0] if top and (len(top) == 1 or top[0][1] > top[1][1]) else None
 
 
+PREFER = {"postgres": 0, None: 1}  # dialects that parse the sample equally well: the portable one wins, not whichever is listed first
+
+
 def detect_dialect(stmts, hint=None):
     """The dialect that parses the most of a sample of the repo's statements. Statements no dialect parses (heavy templating)
     say nothing about the engine, so they don't count. Dialects that parse the same SQL (Spark and BigQuery both read backtick
@@ -76,7 +79,7 @@ def detect_dialect(stmts, hint=None):
         if len(sqls) == len(sample):
             cache.update(results)
         telling = [i for i in range(len(sqls)) if any(results[d][i][0] for d in dialects)]
-        return sorted(dialects, key=lambda d: (sum(not results[d][i][0] for i in telling), sum(results[d][i][1] for i in telling))), telling
+        return sorted(dialects, key=lambda d: (sum(not results[d][i][0] for i in telling), sum(results[d][i][1] for i in telling), PREFER.get(d, 9))), telling
     if not sample:
         return None
     candidates = DIALECTS + ((hint,) if hint and hint not in DIALECTS else ())

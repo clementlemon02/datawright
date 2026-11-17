@@ -45,7 +45,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 logging.getLogger("sqlglot").setLevel(logging.CRITICAL)  # its warnings quote SQL, which can contain secrets
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 SKIP = {".git", ".venv", "venv", "node_modules", "target", "dbt_packages", "dbt_modules", "__pycache__", ".data-context"}
 SQL_START = re.compile(r"\s*(?:--[^\n]*\n\s*|/\*.*?\*/\s*|jinja_expr\s*)*(with|select|insert|merge|create|update)\b", re.I | re.S)  # dbt models open with {{ config(...) }}
 KINDS = ("correction", "gotcha", "caveat", "decision")  # also the order notes appear in cards
@@ -166,6 +166,20 @@ def tname(t) -> str:
     return LOCAL.get(n, n)
 
 
+def select_tables(sql) -> set:
+    """Tables a SELECT reads (its own CTE names left out): what a pandas read_sql query pulls in."""
+    import sqlglot
+    from sqlglot import exp
+    try:
+        tree = sqlglot.parse_one(sql)
+        if all(isinstance(e.unalias(), exp.Count) for e in tree.expressions):  # select count(*): a health check, not a source
+            return set()
+        ctes = {c.alias.lower() for c in tree.find_all(exp.CTE)}
+        return {n for t in tree.find_all(exp.Table) if (n := tname(t)) and n not in ctes}
+    except Exception:
+        return set()
+
+
 def valid(name: str) -> bool:
     return bool(name) and "jinja_expr" not in name
 
@@ -251,6 +265,9 @@ def dialect_hint(files):
     return top[0][0] if top and (len(top) == 1 or top[0][1] > top[1][1]) else None
 
 
+PREFER = {"postgres": 0, None: 1}  # dialects that parse the sample equally well: the portable one wins, not whichever is listed first
+
+
 def detect_dialect(stmts, hint=None):
     """The dialect that parses the most of a sample of the repo's statements. Statements no dialect parses (heavy templating)
     say nothing about the engine, so they don't count. Dialects that parse the same SQL (Spark and BigQuery both read backtick
@@ -278,7 +295,7 @@ def detect_dialect(stmts, hint=None):
         if len(sqls) == len(sample):
             cache.update(results)
         telling = [i for i in range(len(sqls)) if any(results[d][i][0] for d in dialects)]
-        return sorted(dialects, key=lambda d: (sum(not results[d][i][0] for i in telling), sum(results[d][i][1] for i in telling))), telling
+        return sorted(dialects, key=lambda d: (sum(not results[d][i][0] for i in telling), sum(results[d][i][1] for i in telling), PREFER.get(d, 9))), telling
     if not sample:
         return None
     candidates = DIALECTS + ((hint,) if hint and hint not in DIALECTS else ())
@@ -878,7 +895,7 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
                 if any(vals) or any(v for _, v in kws):
                     ix.fcalls.append((*target, vals, kws))
 
-    out, done = [], set()
+    out, done, sql_reads = [], set(), set()
     for n in ast.walk(tree):  # docstrings are prose, not SQL
         if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.body \
                 and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant):
@@ -894,16 +911,25 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
             if len(text_) >= 20 and SQL_START.match(text_):
                 made = extract_sql(text_, path, n.lineno, py=True)
                 out += made
+                if re.match(r"\s*(select|with)\b", text_, re.I):  # pandas read_sql: what a query reads feeds the table to_sql writes
+                    for st in made:
+                        sql_reads |= select_tables(st[2])
                 if argv is not None or bind is not None or not isinstance(n, ast.Constant):  # a value was filled in: an f-string, an argument, a loop, a call
                     ix.inferred.update((path, s[1]) for s in made)
 
     # ponytail: Spark DataFrame lineage is by group: a call or loop iteration's writes take its own reads and the file's
     groups = {}  # group -> (reads, writes)
+    pandas_writes = set()  # to_sql targets: fed by the file's read_sql queries too
     for n, (group, env) in ((n, s) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) for s in scopes(n)):
         render_ = lambda x: render(x, env)
         attr, args, names = n.func.attr, n.args, []
         if attr in ("table", "saveAsTable", "insertInto", "toTable", "writeTo") and args:
             names = [render_(args[0])]
+        elif attr in ("to_sql", "read_sql_table"):  # pandas: the table is the name, qualified by schema=
+            nm = args[0] if args else next((k.value for k in n.keywords if k.arg in ("name", "table_name")), None)
+            sch = next((k.value for k in n.keywords if k.arg == "schema"), None)
+            if nm is not None and render_(nm):
+                names = [(f"{render_(sch)}." if sch is not None and render_(sch) else "") + render_(nm)]
         elif attr in ("load", "save", "parquet", "csv", "json", "orc", "avro", "text", "delta") or attr.startswith(("read_", "to_")):
             arg = args[0] if args else next((k.value for k in n.keywords if k.arg in ("path", "paths")), None)
             names = [storage_name(render_(arg))] if arg is not None else []  # files on S3, OSS, GCS, ADLS or HDFS
@@ -924,7 +950,9 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
             if isinstance(cur, ast.Attribute):
                 chain.add(cur.attr)
                 cur = cur.value
-        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save") or attr.startswith("to_") or chain & {"write", "writeStream"}
+        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save", "to_sql") or attr.startswith("to_") or chain & {"write", "writeStream"}
+        if attr == "to_sql" and not TEST_FILE.search(path):
+            pandas_writes.update(x.lower() for x in names)
         groups.setdefault(group, (set(), set()))[1 if written and not TEST_FILE.search(path) else 0].update(x.lower() for x in names)
         if written and not TEST_FILE.search(path):  # Spark's save mode, from the call and the line it sits on
             seg = "\n".join(text.splitlines()[n.lineno - 1:n.end_lineno + 1])
@@ -937,6 +965,7 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
     for (fk, lk), (rs, ws) in groups.items():
         feed = all_reads if (fk, lk) == (None, None) else rs | groups.get((fk, None), (set(), set()))[0] | file_reads
         for w in ws:
+            feed = feed | sql_reads if w in pandas_writes else feed
             ix.dataset(w, "topic" if w.startswith("kafka:") else "files" if STORAGE.match(w) else "pyspark", file=path, line=1)
             ix.writers.setdefault((w, path), 1)
             for r in feed - ws:

@@ -210,7 +210,7 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
                 if any(vals) or any(v for _, v in kws):
                     ix.fcalls.append((*target, vals, kws))
 
-    out, done = [], set()
+    out, done, sql_reads = [], set(), set()
     for n in ast.walk(tree):  # docstrings are prose, not SQL
         if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.body \
                 and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant):
@@ -226,16 +226,25 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
             if len(text_) >= 20 and SQL_START.match(text_):
                 made = extract_sql(text_, path, n.lineno, py=True)
                 out += made
+                if re.match(r"\s*(select|with)\b", text_, re.I):  # pandas read_sql: what a query reads feeds the table to_sql writes
+                    for st in made:
+                        sql_reads |= select_tables(st[2])
                 if argv is not None or bind is not None or not isinstance(n, ast.Constant):  # a value was filled in: an f-string, an argument, a loop, a call
                     ix.inferred.update((path, s[1]) for s in made)
 
     # ponytail: Spark DataFrame lineage is by group: a call or loop iteration's writes take its own reads and the file's
     groups = {}  # group -> (reads, writes)
+    pandas_writes = set()  # to_sql targets: fed by the file's read_sql queries too
     for n, (group, env) in ((n, s) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) for s in scopes(n)):
         render_ = lambda x: render(x, env)
         attr, args, names = n.func.attr, n.args, []
         if attr in ("table", "saveAsTable", "insertInto", "toTable", "writeTo") and args:
             names = [render_(args[0])]
+        elif attr in ("to_sql", "read_sql_table"):  # pandas: the table is the name, qualified by schema=
+            nm = args[0] if args else next((k.value for k in n.keywords if k.arg in ("name", "table_name")), None)
+            sch = next((k.value for k in n.keywords if k.arg == "schema"), None)
+            if nm is not None and render_(nm):
+                names = [(f"{render_(sch)}." if sch is not None and render_(sch) else "") + render_(nm)]
         elif attr in ("load", "save", "parquet", "csv", "json", "orc", "avro", "text", "delta") or attr.startswith(("read_", "to_")):
             arg = args[0] if args else next((k.value for k in n.keywords if k.arg in ("path", "paths")), None)
             names = [storage_name(render_(arg))] if arg is not None else []  # files on S3, OSS, GCS, ADLS or HDFS
@@ -256,7 +265,9 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
             if isinstance(cur, ast.Attribute):
                 chain.add(cur.attr)
                 cur = cur.value
-        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save") or attr.startswith("to_") or chain & {"write", "writeStream"}
+        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save", "to_sql") or attr.startswith("to_") or chain & {"write", "writeStream"}
+        if attr == "to_sql" and not TEST_FILE.search(path):
+            pandas_writes.update(x.lower() for x in names)
         groups.setdefault(group, (set(), set()))[1 if written and not TEST_FILE.search(path) else 0].update(x.lower() for x in names)
         if written and not TEST_FILE.search(path):  # Spark's save mode, from the call and the line it sits on
             seg = "\n".join(text.splitlines()[n.lineno - 1:n.end_lineno + 1])
@@ -269,6 +280,7 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
     for (fk, lk), (rs, ws) in groups.items():
         feed = all_reads if (fk, lk) == (None, None) else rs | groups.get((fk, None), (set(), set()))[0] | file_reads
         for w in ws:
+            feed = feed | sql_reads if w in pandas_writes else feed
             ix.dataset(w, "topic" if w.startswith("kafka:") else "files" if STORAGE.match(w) else "pyspark", file=path, line=1)
             ix.writers.setdefault((w, path), 1)
             for r in feed - ws:
