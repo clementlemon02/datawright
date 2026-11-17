@@ -46,12 +46,12 @@ You need [uv](https://docs.astral.sh/uv/) and git.
 **1. Try the tool.** One minute, no agent needed. From your data repo's root:
 
 ```bash
-uv run https://raw.githubusercontent.com/clementlemon02/datawright/main/skills/data-context/scripts/datawright.py init
+uvx datawright-cli init
 .data-context/dw card <a table you know>
 .data-context/dw impact <that table>
 ```
 
-On a feature branch, `.data-context/dw review --base main` prints the merge-request report. `.data-context/dw coverage` lists what it doesn't read in your repo yet.
+Want `dw` on your PATH everywhere? `uv tool install datawright-cli`. On a feature branch, `.data-context/dw review --base main` prints the merge-request report. `.data-context/dw coverage` lists what it doesn't read in your repo yet.
 
 **2. Give your agent the skills.** Claude Code:
 ```
