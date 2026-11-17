@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 96" width="420" role="img" aria-label="Datawright">
+<g stroke="#8b949e" stroke-width="3" fill="none" stroke-linecap="round"><path d="M22 48 H46 M46 48 L66 26 H84 M46 48 L66 70 H84"/></g>
+<circle cx="18" cy="48" r="9" fill="#2f81f7"/><circle cx="92" cy="26" r="9" fill="#3fb950"/><circle cx="92" cy="70" r="9" fill="#d29922"/>
+<text x="118" y="64" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="46" font-weight="700" fill="#8b949e" letter-spacing="-1">Datawright</text>
+</svg>
