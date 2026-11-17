@@ -9,7 +9,7 @@ What's open, why it matters, and what "done" means. Once the repo is on GitHub, 
 | Monitoring in production | `dctx check` and `on-call` are tested on the demo, not yet on a real warehouse schedule | The checks DAG running a week on a real repo, with false alerts tuned away |
 | Merge request check on a real project | `dctx review` and the CI templates are tested on the demo and test repos, not yet on a GitLab project | The GitLab job posting on a real merge request, with the token set up; optional AI review (`pipeline-review`) as a second job |
 | ADE-bench, with and without the kit | The headline claim for launch: agents finish real data tasks better | Success rate, tokens and time on ADE-bench, both ways, in ARCHITECTURE.md |
-| Publish | | README stats reviewed for employer details, GitHub Actions running the four self-checks (tests/), a version tag, repo public on `clementlemon02/aiworkflow` |
+| Publish | | README stats reviewed for employer details, GitHub Actions running the four self-checks (tests/), a version tag, repo public on `clementlemon02/datawright` |
 
 ## Ideas from other tools and real platforms
 

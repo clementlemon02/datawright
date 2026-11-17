@@ -75,7 +75,7 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--update", action="store_true", help="write what dctx finds now as the expected result")
     ap.add_argument("--all", action="store_true", help="include the large repos")
-    ap.add_argument("--cache", default=str(Path.home() / ".cache/aiworkflow-corpus"))
+    ap.add_argument("--cache", default=str(Path.home() / ".cache/datawright-corpus"))
     a = ap.parse_args()
     path = HERE / "expected.json"
     expected = json.loads(path.read_text()) if path.exists() else {}

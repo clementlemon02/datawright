@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "aiworkflow",
+  "name": "datawright",
   "description": "Agent-agnostic skills for data engineers: connect your agent to your data stack, get context on any table or pipeline, and build, test, debug and optimize pipelines. Works in Claude Code, Codex, Cursor, Gemini CLI, Grok Build and any agent that reads SKILL.md.",
   "owner": {
     "name": "Clement",

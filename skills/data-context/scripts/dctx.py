@@ -3464,7 +3464,7 @@ def update(source=None):
     current = version_of(target.read_text(errors="replace")) if target.exists() else (0,)
     cands = [(version_of(Path(source).read_text(errors="replace")), Path(source))] if source else installed_copies()
     if not cands:
-        sys.exit("No installed copy of the data-context skill found. Update the aiworkflow skills "
+        sys.exit("No installed copy of the data-context skill found. Update the datawright skills "
                  "(Claude Code: /plugin update; others: npx skills update), or pass --from <path to dctx.py>.")
     new, path = cands[0]
     if new <= current:

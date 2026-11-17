@@ -25,7 +25,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - uses: actions/cache@v4
         with:
-          path: ~/.cache/aiworkflow-corpus
+          path: ~/.cache/datawright-corpus
           key: corpus-${{ hashFiles('benchmarks/corpus/run.py') }}
       - name: Public repos at pinned commits still index the same
         run: uv run -q benchmarks/corpus/run.py

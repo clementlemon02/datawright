@@ -16,7 +16,7 @@ Open your agent in `~/shop-demo` and say *"set up this repo"*. When it asks how 
 
 ## Things to ask
 
-- *"Finance says October net revenue was $284,732.08, but mart.revenue_daily adds up to $326,960. Which number is right, and why do they differ?"* There's more than one cause. The answer key is in `tests/test_demo.py` in the aiworkflow repo; don't show it to the agent.
+- *"Finance says October net revenue was $284,732.08, but mart.revenue_daily adds up to $326,960. Which number is right, and why do they differ?"* There's more than one cause. The answer key is in `tests/test_demo.py` in the datawright repo; don't show it to the agent.
 - *"Fix revenue_daily and add a test so it can't happen again."*
 - *"What breaks if I change staging.orders?"*
 - *"Review models/marts/revenue_daily.sql before I merge it."*

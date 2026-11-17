@@ -1,8 +1,8 @@
-# aiworkflow
+# Datawright
 
 **Every merge request shows what it breaks, and your AI agent knows how your tables join.**
 
-aiworkflow compiles your data team's code (SQL, dbt, Airflow, Spark, Flink, Java services, BI) into context that agents and reviewers can use: lineage, schedules, what columns mean and how tables join. It reads code, not data, and spends no model tokens to build. Then eleven skills give your agent a senior data engineer's way of working on top of it.
+Datawright compiles your data team's code (SQL, dbt, Airflow, Spark, Flink, Java services, BI) into context that agents and reviewers can use: lineage, schedules, what columns mean and how tables join. It reads code, not data, and spends no model tokens to build. Then eleven skills give your agent a senior data engineer's way of working on top of it.
 
 Works with Claude Code, Codex, Cursor, Gemini CLI, Grok Build and any agent that reads [Agent Skills](https://agentskills.io), on any stack: setup finds what it doesn't understand yet in your repo and teaches itself with small connectors, so it fits your setup instead of the other way round.
 
@@ -37,13 +37,13 @@ You need [uv](https://docs.astral.sh/uv/) (or Python 3.10+ with `sqlglot` and `p
 
 Claude Code:
 ```
-/plugin marketplace add clementlemon02/aiworkflow
-/plugin install data-eng@aiworkflow
+/plugin marketplace add clementlemon02/datawright
+/plugin install data-eng@datawright
 ```
 
 Other agents (Codex, Cursor, Gemini CLI, Grok Build, OpenCode, …):
 ```bash
-npx skills add clementlemon02/aiworkflow -a codex
+npx skills add clementlemon02/datawright -a codex
 ```
 Swap `-a codex` for your agent, repeat `-a` for several, add `-g` to install for all projects.
 
