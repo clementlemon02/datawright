@@ -18,6 +18,17 @@ jobs:
           for t in tests/test_datawright.py tests/test_demo.py tests/test_streaming.py tests/test_bi_export.py; do uv run -q "$t"; done
           uv run -q --python 3.10 tests/test_datawright.py  # the oldest Python datawright promises
 
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: The wheel installs and runs
+        run: |
+          uv build
+          uvx --from dist/*.whl datawright version
+          uvx --from dist/*.whl dw --help > /dev/null
+
   corpus:
     runs-on: ubuntu-latest
     steps:

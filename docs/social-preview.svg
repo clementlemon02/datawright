@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+<rect width="1280" height="640" fill="#0d1117"/>
+<rect x="0" y="0" width="1280" height="8" fill="#2f81f7"/>
+<g stroke="#8b949e" stroke-width="5" fill="none" stroke-linecap="round"><path d="M96 190 H140 M140 190 L180 150 H214 M140 190 L180 230 H214"/></g>
+<circle cx="88" cy="190" r="16" fill="#2f81f7"/><circle cx="230" cy="150" r="16" fill="#3fb950"/><circle cx="230" cy="230" r="16" fill="#d29922"/>
+<g font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<text x="280" y="212" font-size="96" font-weight="700" fill="#e6edf3" letter-spacing="-2">Datawright</text>
+<text x="88" y="340" font-size="52" font-weight="600" fill="#e6edf3">Know what breaks before you merge.</text>
+<text x="88" y="410" font-size="32" fill="#8b949e">Lineage, join paths and merge-request impact, read from</text>
+<text x="88" y="456" font-size="32" fill="#8b949e">your data repo's code, for your AI agent and your reviewers.</text>
+<text x="88" y="560" font-size="28" fill="#3fb950" font-family="ui-monospace,Menlo,Consolas,monospace">$ dw review --base main</text>
+<text x="1192" y="560" font-size="28" fill="#8b949e" text-anchor="end">github.com/clementlemon02/datawright</text>
+</g>
+</svg>

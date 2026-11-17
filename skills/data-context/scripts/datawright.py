@@ -44,7 +44,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 logging.getLogger("sqlglot").setLevel(logging.CRITICAL)  # its warnings quote SQL, which can contain secrets
-VERSION = "0.15.0"
+VERSION = "0.1.0"
 SKIP = {".git", ".venv", "venv", "node_modules", "target", "dbt_packages", "dbt_modules", "__pycache__", ".data-context"}
 SQL_START = re.compile(r"\s*(?:--[^\n]*\n\s*|/\*.*?\*/\s*|jinja_expr\s*)*(with|select|insert|merge|create|update)\b", re.I | re.S)  # dbt models open with {{ config(...) }}
 KINDS = ("correction", "gotcha", "caveat", "decision")  # also the order notes appear in cards
@@ -3769,6 +3769,8 @@ def main(argv=None):
         if src != (HOME / "datawright.py").resolve():
             shutil.copy(src, HOME / "datawright.py")
         assets = src.parent.parent / "assets"
+        if not assets.is_dir():  # installed from PyPI: the assets sit next to the module
+            assets = src.parent / "datawright_kit" / "assets"
         if not assets.is_dir():  # run from the repo's copy (to add a connector later): the installed skill has the assets
             assets = next((path.parent.parent / "assets" for _, path in installed_copies() if (path.parent.parent / "assets").is_dir()), assets)
         if not (HOME / "config.yml").exists() and (assets / "config.yml").exists():
