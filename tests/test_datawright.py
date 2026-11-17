@@ -248,6 +248,11 @@ def main():
     assert "pw-secret-123" not in built + err.getvalue(), "SQL text (and secrets in it) must never be echoed"
     con = sqlite3.connect(repo / ".data-context/index.db")
     edges = set(con.execute("select src, dst from edges"))
+    how = {(s, d): h for s, d, h in con.execute("select src, dst, how from edges")}  # how sure each link is
+    assert how[("staging.orders", "mart.revenue_daily")] == "direct", "plain SQL in a .sql file is read directly"
+    assert how[("raw.events", "staging.events_stage")] == "inferred" and how[("raw.x", "dw.x")] == "inferred", "names filled into a Python string are inferred"
+    assert how[("src.jdbc_table", "dw.jdbc_out")] == "inferred", "Spark DataFrame lineage is a pattern, so inferred"
+    assert "declared" in set(how.values()), "connector and import edges are declared"
     for e in [("staging.orders", "mart.revenue_daily"), ("staging.payments", "mart.revenue_daily"),
               ("raw.orders", "staging.orders"), ("stg_customers", "customers"), ("stg_orders", "customers"),
               ("raw.events", "staging.events"), ("raw.events", "staging.events_stage"), ("raw.clicks", "mart.clicks_daily"),
@@ -291,6 +296,9 @@ def main():
     assert "runs in (1): adhoc.snapshot manual (dags/etl.py:14)" in cli("card", "revenue_snapshot")
 
     cov = cli("coverage")
+    assert "lineage links:" in cov and "inferred" in cov, cov
+    assert "raw.events (inferred)" in cli("card", "staging.events_stage"), "a card marks links that were worked out, not read plainly"
+    assert "(inferred)" not in cli("card", "mart.revenue_daily").split("downstream")[0], "plain links carry no mark"
     for text in ("connector lineage_yaml", "connector kafka_connect", "1 look like pipeline or DAG definitions in config", "configs/orders_job.yaml",
                  "connector dagster", "next: write a connector"):
         assert text in cov, f"coverage is missing {text!r}:\n{cov}"
@@ -462,7 +470,7 @@ def main():
     assert "pipelines/revenue.sql" in first_card["paths"] and first_card["baseline"] > 0, first_card
     assert "pipelines/revenue.sql" not in second_card["paths"], "a file must count once an hour"
     report = cli("savings")
-    assert "questions answered: 24" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
+    assert "questions answered: 26" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
     print(report)
     edges, cols = set(con.execute("select src, dst, via from edges")), set(con.execute("select * from col_edges"))
     for src, dst, via in [("mart.revenue_daily", "bi.revenue_dashboard", "import openlineage"),

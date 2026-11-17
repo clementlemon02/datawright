@@ -21,6 +21,7 @@
 ## Data context
 - Before touching a dataset: `uv run .data-context/datawright.py card <name>` (lineage, schema, readers, owners, gotchas in ~200 tokens). Impact of a change: `impact <name>[.<column>]`. Find: `search <words>`.
 - **Before writing any SQL that joins tables, run `uv run .data-context/datawright.py join <table> <table>`** and use the path it gives: it's how this repo's code joins them. Don't join on a column because of its name: column names here drift, and some key-like columns are stale (the card's `unused keys` line names them). A card's `means` line says what each key holds and its other names, and `values` what codes mean (`status 2 = approved`).
+- A lineage link shown as `(inferred)` was worked out, not read plainly: open the code it cites before you rely on it or tell the user it is certain.
 - Index missing or older than the latest commit: `uv run .data-context/datawright.py build` (seconds, no model tokens).
 - Before opening a merge request: `uv run .data-context/datawright.py review` (impact of the branch; CI posts the same report).
 - Stale or missing data: `uv run .data-context/datawright.py check <name>`, then the `on-call` skill. After updating the kit: `datawright update`.

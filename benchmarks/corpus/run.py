@@ -62,7 +62,7 @@ def measure(d, connectors):
     lint = subprocess.run(["uv", "run", "-q", ".data-context/datawright.py", "lint"], cwd=d, capture_output=True, text=True).stdout
     found = next((l.split(":", 1)[1].strip() for l in lint.splitlines() if l.startswith("best practices:")), "")
     out = {"datasets": one("select count(*) from datasets"), "edges": one("select count(*) from edges"), "column_edges": one("select count(*) from col_edges"),
-           "readers": one("select count(*) from readers"), "runs": one("select count(*) from runs"), "unparsed": one("select count(*) from issues"),
+           "readers": one("select count(*) from readers"), **{f"edges_{h}": one(f"select count(*) from edges where how = '{h}'") for h in ("direct", "declared", "inferred")}, "runs": one("select count(*) from runs"), "unparsed": one("select count(*) from issues"),
            "dialect": one("select v from meta where k='dialect'"), "joins": one("select count(*) from joins"),
            "concepts": one("select count(distinct concept) from concepts"), "value_maps": one("select count(distinct dataset || column_name) from value_maps"),
            "best_practices": found}

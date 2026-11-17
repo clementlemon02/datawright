@@ -44,7 +44,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 logging.getLogger("sqlglot").setLevel(logging.CRITICAL)  # its warnings quote SQL, which can contain secrets
-VERSION = "0.14.0"
+VERSION = "0.15.0"
 SKIP = {".git", ".venv", "venv", "node_modules", "target", "dbt_packages", "dbt_modules", "__pycache__", ".data-context"}
 SQL_START = re.compile(r"\s*(?:--[^\n]*\n\s*|/\*.*?\*/\s*|jinja_expr\s*)*(with|select|insert|merge|create|update)\b", re.I | re.S)  # dbt models open with {{ config(...) }}
 KINDS = ("correction", "gotcha", "caveat", "decision")  # also the order notes appear in cards
@@ -64,7 +64,7 @@ create table datasets(name text primary key, kind text, file text, line int, des
 create table tests(dataset text, source text);
 create table contracts(dataset text, column_name text, type text, required int, source text);
 create table columns(dataset text, name text, type text, description text, primary key(dataset, name));
-create table edges(src text, dst text, via text, primary key(src, dst));
+create table edges(src text, dst text, via text, how text, primary key(src, dst));
 create table col_edges(src text, dst text, primary key(src, dst));
 create table readers(dataset text, file text, line int, primary key(dataset, file));
 create table writers(dataset text, file text, line int, primary key(dataset, file));
@@ -98,6 +98,9 @@ def run(cmd: list[str]) -> str:
 
 # ---------------------------------------------------------------- build
 
+HOW_RANK = {"direct": 0, "declared": 1, "inferred": 2}  # the more certain evidence wins when an edge is found twice
+
+
 class Index:
     def __init__(self):
         self.ds, self.cols, self.edges, self.col_edges = {}, {}, {}, set()
@@ -107,6 +110,7 @@ class Index:
         self.clauses, self.layout = {}, set()  # (file, line, column, table or None) -> clauses; (table, kind, columns, file, line)
         self.joins, self.identity, self.keys = set(), set(), set()  # join pairs; pass-through renames (src, dst); declared keys
         self.value_maps, self.conversions, self.pending_maps = set(), set(), []  # what codes mean (CASE, DECODE); unit, epoch, time-zone changes
+        self.how, self.inferred = {}, set()  # edge -> direct | declared | inferred; (file, line) of SQL built by substitution or binding
         self.entities = {}  # dbt semantic-model entity -> [(model.column, type)]
 
     def issue(self, file, line, error):
@@ -145,9 +149,12 @@ class Index:
         c = self.cols.setdefault((ds, col.lower()), [None, None])
         c[0], c[1] = c[0] or typ, c[1] or desc
 
-    def edge(self, src, dst, via):
+    def edge(self, src, dst, via, how="direct"):
+        """how sure: direct (written plainly in code), declared (a connector or import says so), inferred (substituted, bound or pattern-matched)."""
         if src and dst and src != dst:
             self.edges.setdefault((src, dst), via)
+            if HOW_RANK[how] < HOW_RANK[self.how.get((src, dst), "inferred")] or (src, dst) not in self.how:
+                self.how[(src, dst)] = how
 
 
 def tname(t) -> str:
@@ -331,7 +338,7 @@ def add_records(ix, name, path, records):
             s, t = (str(x).lower() for x in r["edge"])
             ix.dataset(s, r.get("source_kind") or "source")
             ix.dataset(t, r.get("kind") or name)
-            ix.edge(s, t, path)
+            ix.edge(s, t, path, "declared")
         elif "column" in r:
             ds, col, *rest = list(r["column"]) + [None, None]
             ix.column(str(ds).lower(), str(col), rest[0], rest[1])
@@ -486,7 +493,7 @@ def add_statement(ix, stmt, dialect, file, line, dbt_model, calls):
             ix.writers.setdefault((target, file), line)
         for s in sources:
             ix.dataset(s)
-            ix.edge(s, target, via)
+            ix.edge(s, target, via, "inferred" if (file, line) in ix.inferred else "direct")
         if isinstance(select, exp.Query):
             add_columns(ix, target, select, dialect, sources)
     else:  # a read: who uses which dataset
@@ -884,7 +891,10 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
         done.update(id(c) for c in ast.walk(n))
         for text_ in texts:
             if len(text_) >= 20 and SQL_START.match(text_):
-                out += extract_sql(text_, path, n.lineno, py=True)
+                made = extract_sql(text_, path, n.lineno, py=True)
+                out += made
+                if argv is not None or bind is not None or not isinstance(n, ast.Constant):  # a value was filled in: an f-string, an argument, a loop, a call
+                    ix.inferred.update((path, s[1]) for s in made)
 
     # ponytail: Spark DataFrame lineage is by group: a call or loop iteration's writes take its own reads and the file's
     groups = {}  # group -> (reads, writes)
@@ -930,7 +940,7 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
             ix.writers.setdefault((w, path), 1)
             for r in feed - ws:
                 ix.dataset(r)
-                ix.edge(r, w, f"{path} (pyspark)")
+                ix.edge(r, w, f"{path} (pyspark)", "inferred")
     for r in all_reads if not all_writes else ():
         ix.dataset(r)["uses"] += 1
         ix.readers.setdefault((r, path), 1)
@@ -1020,17 +1030,22 @@ def extract_jvm(ix, path, text, shared=None, exprs=None, env=None):
         args = jvm_args(text, m.end())
         if args and (template := value(args[0])) and SQL_START.match(template):
             fill = iter([value(a) or "{x}" for a in args[1:]])
-            out += extract_sql(re.sub(r"%[sd]", lambda _: next(fill, "{x}"), template), path, text.count("\n", 0, m.start()) + 1, py=True)
+            made = extract_sql(re.sub(r"%[sd]", lambda _: next(fill, "{x}"), template), path, text.count("\n", 0, m.start()) + 1, py=True)
+            out += made
+            ix.inferred.update((path, s[1]) for s in made)
     for m in JVM_STR.finditer(text):
         s = m[1] if m[1] is not None else m[2].replace("\\n", "\n").replace("\\t", " ").replace('\\"', '"')
         gap = re.fullmatch(r"\s*\+\s*(?:([\w.]+)\s*\+\s*)?", text[pieces[-1][1]:m.start()]) if pieces else None
         if gap:  # "select " + TABLE + " where ..." reads as one string
-            pieces[-1][1:] = [m.end(), pieces[-1][2] + (consts.get(gap[1].rsplit(".", 1)[-1], "{x}") if gap[1] else "") + s]
+            pieces[-1][1:] = [m.end(), pieces[-1][2] + (consts.get(gap[1].rsplit(".", 1)[-1], "{x}") if gap[1] else "") + s, True]  # True: built from parts
         else:
             pieces.append([m.start(), m.end(), s])
-    for start, _, s in pieces:
+    for start, _, s, *built in pieces:
         if len(s) >= 20 and SQL_START.match(s) and "%s" not in s:  # a format template is read above, filled in
-            out += extract_sql(s, path, text.count("\n", 0, start) + 1, py=True)
+            made = extract_sql(s, path, text.count("\n", 0, start) + 1, py=True)
+            out += made
+            if built:  # joined with + and constants: built, not written plainly
+                ix.inferred.update((path, x[1]) for x in made)
 
     def values(args):  # "literal", CONSTANT or Config.CONSTANT; anything computed is unknown
         for a in args.split(","):
@@ -1061,7 +1076,7 @@ def extract_jvm(ix, path, text, shared=None, exprs=None, env=None):
         ix.writers.setdefault((w, path), line)
         for r in reads - set(writes):
             ix.dataset(r, "topic" if r.startswith("kafka:") else "source")
-            ix.edge(r, w, path)
+            ix.edge(r, w, path, "inferred")
     for r in reads if not writes else ():
         ix.dataset(r, "topic" if r.startswith("kafka:") else "source")["uses"] += 1
         ix.readers.setdefault((r, path), 1)
@@ -1120,7 +1135,7 @@ def storage_sql(ix, file, line, sql):
         if name := storage_name(next(g for g in m.groups() if g)):
             ix.dataset(name, "files")
             if target:
-                ix.edge(name, target, at)
+                ix.edge(name, target, at, "inferred")
             else:
                 ix.readers.setdefault((name, file), line)
     for m in FILE_WRITES.finditer(sql):
@@ -1129,7 +1144,7 @@ def storage_sql(ix, file, line, sql):
             ix.writers.setdefault((name, file), line)
             for s in re.findall(r"""\b(?:from|join)\s+([\w.`"]+)""", sql, re.I):  # ponytail: names after FROM and JOIN, not a parse
                 if "." in s or s.isidentifier():
-                    ix.edge(clean(s), name, at)
+                    ix.edge(clean(s), name, at, "inferred")
 
 
 def literal_strings(n):
@@ -1408,7 +1423,7 @@ def load_dbt(ix, projects):
         for nid, n in m.get("nodes", {}).items():
             for dep in n.get("depends_on", {}).get("nodes", []):
                 if nid in ids and dep in ids:
-                    ix.edge(ids[dep], ids[nid], ix.ds[ids[nid]].get("file") or "dbt")
+                    ix.edge(ids[dep], ids[nid], ix.ds[ids[nid]].get("file") or "dbt", "declared")
 
 
 def read_rows(path: Path):
@@ -1451,7 +1466,7 @@ def load_catalog(ix, path):
                 ix.dataset(out, "warehouse")
                 for i in ins:
                     ix.dataset(i)
-                    ix.edge(i, out, "import openlineage")
+                    ix.edge(i, out, "import openlineage", "declared")
                 facets = o.get("facets") or {}
                 for f in (facets.get("schema") or {}).get("fields") or []:
                     ix.column(out, f["name"], f.get("type"), f.get("description"))
@@ -1466,7 +1481,7 @@ def load_catalog(ix, path):
                 ix.dataset(dst, "warehouse")
                 for u in a.get("upstreams") or []:
                     ix.dataset(dh_ds(u.get("dataset")))
-                    ix.edge(dh_ds(u.get("dataset")), dst, "import datahub")
+                    ix.edge(dh_ds(u.get("dataset")), dst, "import datahub", "declared")
                 for g in a.get("fineGrainedLineages") or []:
                     for s in map(dh_col, g.get("upstreams") or []):
                         for t in map(dh_col, g.get("downstreams") or []):
@@ -1483,7 +1498,7 @@ def load_catalog(ix, path):
                 if s and t:
                     ix.dataset(s)
                     ix.dataset(t, "warehouse")
-                    ix.edge(s, t, "import openmetadata")
+                    ix.edge(s, t, "import openmetadata", "declared")
                 for c in ((e.get("lineageDetails") or {}).get("columnsLineage")) or []:
                     for f in c.get("fromColumns") or []:
                         if c.get("toColumn"):
@@ -1516,7 +1531,7 @@ def load_imports(ix):
                 if s and t:
                     ix.dataset(s)
                     ix.dataset(t, "warehouse")
-                    ix.edge(s, t, "import warehouse lineage")
+                    ix.edge(s, t, "import warehouse lineage", "declared")
                     sc, tc = pick(r, "source_column", "source_column_name"), pick(r, "target_column", "target_column_name")
                     if sc and tc:
                         ix.col_edges.add((f"{s}.{sc.lower()}", f"{t}.{tc.lower()}"))
@@ -1787,7 +1802,7 @@ def build(dialect=None):
                         for src in macros.get(in_project[0], {}).get(m[1], ()):
                             if src != model:
                                 ix.dataset(src)
-                                ix.edge(src, model, at(m))
+                                ix.edge(src, model, at(m), "inferred")
             stmts += extract_sql(text, f, dbt_model=Path(f).stem.lower() if in_dbt else None)
             if in_dbt:
                 dbt_layout(ix, text, Path(f).stem.lower(), f)
@@ -1873,7 +1888,7 @@ def build(dialect=None):
     con.executemany("insert into tests values (?,?)", sorted(tested))
     con.executemany("insert into contracts values (?,?,?,?,?)", [(final(ds), c, typ, req, src) for ds, c, typ, req, src in ix.contracts])
     con.executemany("insert or ignore into columns values (?,?,?,?)", [(final(ds), c, t, desc) for (ds, c), (t, desc) in ix.cols.items()])
-    con.executemany("insert or ignore into edges values (?,?,?)", [(final(s), final(d), v) for (s, d), v in ix.edges.items() if final(s) != final(d)])
+    con.executemany("insert or ignore into edges values (?,?,?,?)", [(final(s), final(d), v, ix.how.get((s, d), "direct")) for (s, d), v in ix.edges.items() if final(s) != final(d)])
     con.executemany("insert or ignore into col_edges values (?,?)", [(split(s), split(d)) for s, d in ix.col_edges])
     con.executemany("insert or ignore into readers values (?,?,?)", [(final(ds), f, ln) for (ds, f), ln in ix.readers.items()])
     con.executemany("insert or ignore into writers values (?,?,?)", [(final(ds), f, ln) for (ds, f), ln in ix.writers.items()])
@@ -2065,8 +2080,9 @@ def card(con, arg, budget):
              + (f"  (STALE: {n['stale']})" if n["stale"] else "")
              for n in q(f"select * from notes where dataset=? order by {order}, date desc", name)]
     tag = lambda via: " (query log)" if via == "query log" else f" ({via[7:]})" if via.startswith("import ") else " (pyspark)" if via.endswith("(pyspark)") else ""
-    up = [r["src"] + tag(r["via"]) for r in q("select src, via from edges where dst=? order by src", name)]
-    down = [r["dst"] for r in q("select dst from edges where src=? order by dst", name)]
+    guess = lambda r: " (inferred)" if r["how"] == "inferred" else ""  # not written plainly: substituted, bound or pattern-matched
+    up = [r["src"] + tag(r["via"]) + guess(r) for r in q("select src, via, how from edges where dst=? order by src", name)]
+    down = [r["dst"] + guess(r) for r in q("select dst, how from edges where src=? order by dst", name)]
     readers = q("select file, line from readers where dataset=? order by file", name)
     writers = q("select file, line from writers where dataset=? and file is not ? order by file", name, d["file"])
     down += [f"{r['file']}:{r['line']} (reads)" for r in readers]
@@ -2603,12 +2619,13 @@ def impact(con, arg, budget=1500):
         down = sorted(reach(ds, lambda n: [r[0] for r in q("select dst from edges where src=?", n)], 9))
         out = [f"impact of changing {ds}"]
     tags = {r[0]: r[1][7:] for r in q("select dst, via from edges where via like 'import %'")}
+    weak = weak_links(con, [ds], down)[0] if not col else set()
     files = {r["file"] for r in uses + stars if r["file"] != "query log"} | {r[0] for r in q("select file from writers where dataset=?", ds)}
     sections = [out + [f"owner: {d['owner']}"] * bool(d and d["owner"]),
                 capped("written by (change these first)", writers, 10, f"datawright card {ds}"),
                 capped("code that reads it" + (" (any clause: select, join, where)" if col else ""), [at(r["file"], r["line"]) for r in uses], 25, f"sqlite3 .data-context/index.db \"select * from col_uses where dataset='{ds}'\""),
                 capped("reads every column (select *, breaks on drops and reorders)", [at(r["file"], r["line"]) for r in stars], 10, ""),
-                capped("downstream" + (" columns" if col else ""), [n + (f" ({tags[n.rsplit('.', 1)[0] if col else n]})" if (n.rsplit('.', 1)[0] if col else n) in tags else "") for n in down], 30, f"datawright lineage {arg} --down 9"),
+                capped("downstream" + (" columns" if col else ""), [n + (f" ({tags[n.rsplit('.', 1)[0] if col else n]})" if (n.rsplit('.', 1)[0] if col else n) in tags else "") + (" (inferred link)" if n in weak else "") for n in down], 30, f"datawright lineage {arg} --down 9"),
                 [f"notes: {n['kind']}: {n['text']}" for n in q("select kind, text from notes where dataset=? and (column_name=? or column_name='')", ds, col or "")][:5],
                 [] if uses or stars or down else ["nothing in the repo or the imported lineage reads it; check the warehouse query log before dropping"]]
     emit(sections, budget)
@@ -2621,6 +2638,17 @@ def reach(start, nbrs, depth):
         frontier = list(dict.fromkeys(m for n in frontier for m in nbrs(n) if m not in seen))
         seen.update(frontier)
     return seen
+
+
+def weak_links(con, roots, down):
+    """(nodes in `down` that are reached only through inferred links, [(src, dst, via)] of the inferred links among them)."""
+    inside = set(roots) | set(down)
+    rows = [r for r in con.execute("select src, dst, how, via from edges") if r[0] in inside and r[1] in down]
+    incoming = {}
+    for s, d, how, via in rows:
+        incoming.setdefault(d, []).append(how)
+    return ({n for n in down if incoming.get(n) and all(h == "inferred" for h in incoming[n])},
+            sorted((s, d, via) for s, d, how, via in rows if how == "inferred"))
 
 
 def search(con, words):
@@ -3267,6 +3295,10 @@ def coverage(con):
     if total:
         print(f"connector edges: {total}, {total - lonely} touching a table found in code; the rest link systems outside the code"
               + (" or use names that don't line up (DROP_PARTS, TYPE_PREFIX, RENAME in the connector)" if lonely else ""))
+    how = dict(q("select how, count(*) from edges group by how"))
+    if how:
+        print(f"lineage links: {how.get('direct', 0)} read plainly from code, {how.get('declared', 0)} declared by a connector or import, "
+              f"{how.get('inferred', 0)} inferred (substituted names, bound arguments, patterns: shown as (inferred), check before relying)")
     unset = q("select name from datasets where name like '%env:%' order by name")
     if unset:
         print(f"names set by environment variables at deploy time: {len(unset)}, e.g. {unset[0][0]}  (add the repo with the deploy config"
@@ -3382,6 +3414,7 @@ def review(con, base=None, strict=False, diff=False, where=""):
             produced.setdefault(r[0], f)
     read = sorted({r[0] for f in changed for r in q("select dataset from readers where file=? union select dataset from col_uses where file=?", f, f)}
                   - set(produced))
+    weak_all = set()
     if produced:
         out += ["| Changed table | Code | Runs in | Downstream | Read by |", "|---|---|---|---|---|"]
         for ds, f in sorted(produced.items()):
@@ -3389,11 +3422,16 @@ def review(con, base=None, strict=False, diff=False, where=""):
             run_ = own_runs(con, ds, q("select dag, task, schedule, at from runs where file=? and ? between line_from and line_to and task != ''", f, (d["line"] if d else 1) or 1))[:1]
             down = sorted(reach(ds, downs, 9))
             readers = [r[0] for r in q("select distinct file from readers where dataset=? union select distinct file from col_uses where dataset=?", ds, ds) if r[0] not in changed]
-            down_txt = ", ".join(n + (f" ({tags[n]})" if n in tags else "") for n in down[:8]) + (f" +{len(down) - 8} more" if len(down) > 8 else "")
+            weak, guesses = weak_links(con, [ds], down)
+            weak_all.update(guesses)
+            down_txt = ", ".join(n + (f" ({tags[n]})" if n in tags else "") + (" (inferred)" if n in weak else "") for n in down[:8]) + (f" +{len(down) - 8} more" if len(down) > 8 else "")
             tier = con.execute("select tier from datasets where name=?", (ds,)).fetchone()
             out.append(f"| `{ds}`{' **tier ' + tier[0] + '**' if tier and tier[0] else ''} | `{f}` | {f'{run_[0][0]}.{run_[0][1]} `{run_[0][2]}`' if run_ else '-'} | {down_txt or '-'} | "
                        f"{', '.join(f'`{r}`' for r in readers[:5]) + (f' +{len(readers) - 5}' if len(readers) > 5 else '') or '-'} |")
         out.append("")
+    if weak_all:  # links built from substituted names, bound arguments or patterns, not written plainly: a person should look
+        out += [f"**Verify ({len(weak_all)} inferred link{'s' * (len(weak_all) > 1)}):** these were worked out, not read plainly, so check them before relying on the list above:", ""]
+        out += [f"- `{s}` → `{d}` (`{v}`)" for s, d, v in sorted(weak_all)[:8]] + ([f"- +{len(weak_all) - 8} more"] if len(weak_all) > 8 else []) + [""]
     if read:
         out += [f"Also reads: {', '.join(f'`{r}`' for r in read[:15])}", ""]
     critical = sorted({(n, r[0]) for ds in produced for n in [ds, *reach(ds, downs, 9)]

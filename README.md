@@ -31,7 +31,7 @@ Agents and reviewers guess. Datawright answers from your repo, with no warehouse
 ## What you get
 
 - **Impact on every merge request.** `datawright review` lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
-- **Lineage down to the column.** Which columns feed which. Every table card names the file and line that writes and reads it.
+- **Lineage down to the column.** Which columns feed which. Every table card names the file and line that writes and reads it, and links that were worked out rather than read plainly are marked `(inferred)`.
 - **Join paths and meanings.** How tables join as your code joins them, what codes like `status = 2` mean, which key columns nothing uses any more.
 - **Any agent can use it.** A command line, plus an MCP server (`datawright serve`) for clients with no shell.
 - **11 agent skills on top** (set up, build, change, debug, test, review, optimize, on-call, tickets) that teach your agent to use it like a senior data engineer.
@@ -100,7 +100,7 @@ They coexist: Datawright imports from them and can [export to dbt, DataHub and O
 
 **What if it doesn't understand part of my repo?** `datawright coverage` lists what it skips. A connector, usually a few dozen lines, teaches it, and setup can write one for you.
 
-**How do I know it's right?** Every answer points at the file and line it came from, `datawright coverage` lists what it can't read, and lineage is scored against dbt's own manifest in CI. It's a heuristic parser, so check surprising results and [report wrong lineage](docs/try-it.md).
+**How do I know it's right?** Every answer points at the file and line it came from, `datawright coverage` lists what it can't read and how many links are inferred, and lineage is scored against dbt's own manifest in CI. It's a heuristic parser, so check surprising results and [report wrong lineage](docs/try-it.md).
 
 **Is it production-ready?** It's a first release, tested by its author on public repos and one production platform. [Ten minutes and five answers](docs/try-it.md) from you would help the most.
 

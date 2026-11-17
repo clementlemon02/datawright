@@ -60,7 +60,7 @@ def datawright_edges(project):
     if r.returncode:
         sys.exit(r.stderr[-800:])
     con = sqlite3.connect(work / ".data-context/index.db")
-    return {(s.lower(), d.lower()) for s, d in con.execute("select src, dst from edges where src != dst")}
+    return {(s.lower(), d.lower()): how for s, d, how in con.execute("select src, dst, how from edges where src != dst")}
 
 
 def main():
@@ -72,10 +72,16 @@ def main():
     project = Path(a.project).resolve()
     want, nodes = truth(a.manifest or manifest_for(project, a.adapter))
     short = lambda n: n if n in nodes else next((x for x in (".".join(n.split(".")[-k:]) for k in (2, 1)) if x in nodes), n)  # db.schema.model -> model
-    got = {(short(s), short(d)) for s, d in datawright_edges(project)}
-    got = {e for e in got if e[0] in nodes and e[1] in nodes}
+    how = {}
+    for (s, d), h in datawright_edges(project).items():
+        how[(short(s), short(d))] = h
+    got = {e for e in how if e[0] in nodes and e[1] in nodes}
     hit = got & want
     print(f"{project.name}: {len(nodes)} nodes, {len(want)} true edges · datawright found {len(got)}: precision {len(hit) / max(len(got), 1):.1%}, recall {len(hit) / max(len(want), 1):.1%}")
+    for h in ("direct", "declared", "inferred"):  # does the label mean something: how often is each kind right?
+        mine = {e for e in got if how[e] == h}
+        if mine:
+            print(f"  {h}: {len(mine)} links, {len(mine & want) / len(mine):.1%} right")
     for label, es in (("missed", want - got), ("extra", got - want)):
         if es:
             print(f"  {label} ({len(es)}): " + ", ".join(f"{s} → {d}" for s, d in sorted(es)[:8]) + (" …" if len(es) > 8 else ""))
