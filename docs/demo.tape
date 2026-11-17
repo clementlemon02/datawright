@@ -10,7 +10,7 @@ Set TypingSpeed 45ms
 Set Theme "Catppuccin Mocha"
 
 Hide
-Type "export PS1='$ ' && REPO=$PWD && rm -rf /tmp/shop-demo && cp -r examples/shop /tmp/shop-demo && cd /tmp/shop-demo && git init -q -b main && git add -A && git commit -qm base && uv run -q $REPO/skills/data-context/scripts/datawright.py init > /dev/null 2>&1 && git checkout -q -b fix-canceled-spelling && sed -i.bak 's/cancelled/canceled/' models/staging/stg_orders.sql && rm models/staging/stg_orders.sql.bak && git commit -qam 'Fix spelling in stg_orders' && alias dw=.data-context/dw && clear"
+Type "export PS1='$ ' GIT_PAGER=cat PAGER=cat && REPO=$PWD && rm -rf /tmp/shop-demo && cp -r examples/shop /tmp/shop-demo && cd /tmp/shop-demo && git init -q -b main && git add -A && git commit -qm base && uv run -q $REPO/skills/data-context/scripts/datawright.py init > /dev/null 2>&1 && git checkout -q -b fix-canceled-spelling && sed -i.bak 's/cancelled/canceled/' models/staging/stg_orders.sql && rm models/staging/stg_orders.sql.bak && git commit -qam 'Fix spelling in stg_orders' && alias dw=.data-context/dw && clear"
 Enter
 Sleep 8s
 Show
