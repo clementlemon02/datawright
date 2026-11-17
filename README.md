@@ -6,6 +6,8 @@ Datawright compiles your data team's code (SQL, dbt, Airflow, Spark, Flink, Java
 
 Works with Claude Code, Codex, Cursor, Gemini CLI, Grok Build and any agent that reads [Agent Skills](https://agentskills.io), on any stack: setup finds what it doesn't understand yet in your repo and teaches itself with small connectors, so it fits your setup instead of the other way round.
 
+<p align="center"><img src="docs/demo.svg" alt="dctx impact, join and card output on the shop example"></p>
+
 ## The two things it does first
 
 **1. A data impact report on every merge request.** `dctx review`, in CI or by hand:

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1161 510" width="1161" role="img" aria-label="dctx output: impact, join path and card for the shop example">
+<rect width="1161" height="510" rx="10" fill="#0d1117"/><rect width="1161" height="34" rx="10" fill="#161b22"/>
+<circle cx="20" cy="17" r="6" fill="#ff5f56"/><circle cx="40" cy="17" r="6" fill="#ffbd2e"/><circle cx="60" cy="17" r="6" fill="#27c93f"/>
+<g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" xml:space="preserve">
+<text x="22" y="58" fill="#7ee787">$ dctx impact staging.orders</text>
+<text x="22" y="80" fill="#c9d1d9">impact of changing staging.orders</text>
+<text x="22" y="102" fill="#c9d1d9">written by (change these first) (1): models/staging/stg_orders.sql:2 (shop_daily.stg_orders)</text>
+<text x="22" y="124" fill="#c9d1d9">code that reads it (2): models/marts/customer_ltv.sql:2 (shop_daily.customer_ltv), models/marts/revenue_daily.sql:2 (shop_daily.revenue_daily)</text>
+<text x="22" y="146" fill="#c9d1d9">downstream (2): mart.customer_ltv, mart.revenue_daily</text>
+<text x="22" y="168" fill="#c9d1d9"></text>
+<text x="22" y="190" fill="#7ee787">$ dctx join staging.orders staging.refunds</text>
+<text x="22" y="212" fill="#c9d1d9">-- staging.orders to staging.refunds: 1 join, as the code joins them</text>
+<text x="22" y="234" fill="#c9d1d9">select …</text>
+<text x="22" y="256" fill="#c9d1d9">from staging.orders t0</text>
+<text x="22" y="278" fill="#c9d1d9">join staging.refunds t1 on t1.order_id = t0.order_id  -- written in 1 query</text>
+<text x="22" y="300" fill="#c9d1d9"></text>
+<text x="22" y="322" fill="#7ee787">$ dctx card mart.revenue_daily</text>
+<text x="22" y="344" fill="#c9d1d9">mart.revenue_daily  [table]  produced by models/marts/revenue_daily.sql:2  · last change 2026-11-17 27f619e &quot;base&quot;</text>
+<text x="22" y="366" fill="#c9d1d9">runs in (1): shop_daily.revenue_daily @daily (dags/shop_daily.py:10)</text>
+<text x="22" y="388" fill="#c9d1d9">(index older than the latest commit: run dctx build)</text>
+<text x="22" y="410" fill="#c9d1d9">upstream (2): staging.orders, staging.payments</text>
+<text x="22" y="432" fill="#c9d1d9">downstream (2): dags/shop_daily.py:13 (reads), reports/weekly_kpis.py:5 (reads)</text>
+<text x="22" y="454" fill="#c9d1d9">columns (3): order_date, revenue, orders</text>
+<text x="22" y="476" fill="#c9d1d9">column sources (2): same names from staging.orders (1), revenue ← staging.orders.amount</text>
+</g></svg>
