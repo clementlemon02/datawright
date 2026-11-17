@@ -18,8 +18,8 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}  # for the ticket key
         run: |
-          uv run --no-config .data-context/dctx.py build
-          uv run --no-config .data-context/dctx.py review --base "origin/${{ github.base_ref }}" --strict | tee data-impact.md
+          uv run --no-config .data-context/datawright.py build
+          uv run --no-config .data-context/datawright.py review --base "origin/${{ github.base_ref }}" --strict | tee data-impact.md
       - name: Post the report
         if: always()
         env:

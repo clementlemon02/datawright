@@ -1,9 +1,9 @@
-"""dctx connector: Looker's LookML, so dashboards show up in `impact` and `review`.
+"""datawright connector: Looker's LookML, so dashboards show up in `impact` and `review`.
 
 Views (`sql_table_name`, or the tables a `derived_table` reads) become `looker:view.<view>`, with a
 column per dimension and measure traced to the warehouse column it reads. Explores (`looker:explore.<explore>`) read
 their base and joined views; LookML dashboards (`*.dashboard.lookml`) read their explores, and each tile's fields are
-column edges, so `dctx impact mart.orders.revenue` reaches `looker:dashboard.<dashboard>.<tile>`.
+column edges, so `datawright impact mart.orders.revenue` reaches `looker:dashboard.<dashboard>.<tile>`.
 Dashboards built in the Looker UI live in the instance, not the repo: export them through its API instead.
 """
 import re
@@ -58,7 +58,7 @@ def table(name):
 
 
 def constants():
-    """`@{NAME}` values from the project's manifest.lkml. ROOT is set by dctx."""
+    """`@{NAME}` values from the project's manifest.lkml. ROOT is set by datawright."""
     try:
         text = next(Path(ROOT).rglob("manifest.lkml")).read_text()
     except (NameError, StopIteration, OSError):

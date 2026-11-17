@@ -12,6 +12,6 @@ labels: first-hour
 
 **Was the answer about your table right?** What was missing or wrong?
 
-**What did `dctx coverage` say it doesn't read?**
+**What did `datawright coverage` say it doesn't read?**
 
 **Would you keep it? What would make you?**

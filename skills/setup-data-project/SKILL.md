@@ -33,7 +33,7 @@ List the data systems, orchestration and transformation tools, and compute engin
 
 ## 3. Build the data context
 
-Follow "First time in a repo" in the `data-context` skill: it puts `dctx` in `.data-context/`, sets the SQL dialect and builds the index of datasets, lineage, columns and readers from the code, in seconds and without model tokens. Then run `dctx coverage` and work through its gaps with connectors (the skill's `references/connectors.md`), largest first, until what's left doesn't matter: in-house frameworks, jobs defined in config, other orchestrators, hand-written lineage. That's how the kit learns this team's stack instead of assuming one. Show the user the build summary, what coverage found and which connectors you wrote, and one `card` for a central dataset.
+Follow "First time in a repo" in the `data-context` skill: it puts `datawright` in `.data-context/`, sets the SQL dialect and builds the index of datasets, lineage, columns and readers from the code, in seconds and without model tokens. Then run `datawright coverage` and work through its gaps with connectors (the skill's `references/connectors.md`), largest first, until what's left doesn't matter: in-house frameworks, jobs defined in config, other orchestrators, hand-written lineage. That's how the kit learns this team's stack instead of assuming one. Show the user the build summary, what coverage found and which connectors you wrote, and one `card` for a central dataset.
 
 ## 4. Add vendor tool skills
 
@@ -69,11 +69,11 @@ Connect only the systems the user's tasks need. Ask which, and which **non-produ
 
 Credentials are always environment-variable references, never literal values: these files get committed.
 
-**dctx as a server, optional.** If an agent has no shell, or the user wants agents to query only through a guard that runs single SELECTs with a row cap, register dctx too (command `uv`, args `["run", ".data-context/dctx.py", "serve"]`, no env vars; see the `data-context` skill) and set `query_command` in `.data-context/config.yml` to the read-only CLI connection. For agents with a shell, also deny the raw database CLI (Claude Code: `Bash(psql:*)` in `permissions.deny`).
+**datawright as a server, optional.** If an agent has no shell, or the user wants agents to query only through a guard that runs single SELECTs with a row cap, register datawright too (command `uv`, args `["run", ".data-context/datawright.py", "serve"]`, no env vars; see the `data-context` skill) and set `query_command` in `.data-context/config.yml` to the read-only CLI connection. For agents with a shell, also deny the raw database CLI (Claude Code: `Bash(psql:*)` in `permissions.deny`).
 
 ## 6. Check every merge request
 
-Offer the data impact check for the repo's CI: [assets/ci/gitlab-ci.yml](assets/ci/gitlab-ci.yml) for GitLab, [assets/ci/github-actions.yml](assets/ci/github-actions.yml) for GitHub. On every merge request it builds the index and posts `dctx review`: the tables the change touches, their DAG tasks and downstream, recorded gotchas, SQL that no longer parses, the ticket key. `.data-context/` must be committed. Posting on GitLab needs a project access token in a CI variable; the template says how. Commit `.data-context/` and the CI file only with the user's approval.
+Offer the data impact check for the repo's CI: [assets/ci/gitlab-ci.yml](assets/ci/gitlab-ci.yml) for GitLab, [assets/ci/github-actions.yml](assets/ci/github-actions.yml) for GitHub. On every merge request it builds the index and posts `datawright review`: the tables the change touches, their DAG tasks and downstream, recorded gotchas, SQL that no longer parses, the ticket key. `.data-context/` must be committed. Posting on GitLab needs a project access token in a CI variable; the template says how. Commit `.data-context/` and the CI file only with the user's approval.
 
 ## 7. Hand over
 
@@ -82,4 +82,4 @@ Tell the user, as a short list:
 - which env vars to export (shell profile, or a git-ignored `.envrc` / `.env`)
 - to restart each agent and check its MCP tool list shows the new servers
 - to check their employer's AI policy before connecting company data, since query results go to the model provider
-- next step: ask for the context or impact of the table they're working on (`dctx card`, `dctx lineage`), and `dctx savings` later to see what it saved
+- next step: ask for the context or impact of the table they're working on (`datawright card`, `datawright lineage`), and `datawright savings` later to see what it saved

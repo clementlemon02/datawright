@@ -2,10 +2,10 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Regression corpus: public data repos at pinned commits, built with dctx and compared with expected.json.
+"""Regression corpus: public data repos at pinned commits, built with datawright and compared with expected.json.
 
 uv run run.py [--only jaffle-shop,balboa] [--update] [--all] [--cache DIR]
-Any change in what dctx finds (datasets, lineage edges, column edges, readers, unparsed statements, dialect, concepts,
+Any change in what datawright finds (datasets, lineage edges, column edges, readers, unparsed statements, dialect, concepts,
 best-practice findings) shows as a diff: review it, and --update when the change is intended. --all adds the two large
 repos (minutes). Repos are fetched once into the cache; nothing in them is executed."""
 import argparse
@@ -50,16 +50,16 @@ def measure(d, connectors):
     home = d / ".data-context"
     shutil.rmtree(home, ignore_errors=True)
     (home / "connectors").mkdir(parents=True)
-    shutil.copy(KIT / "scripts/dctx.py", home / "dctx.py")
+    shutil.copy(KIT / "scripts/datawright.py", home / "datawright.py")
     for c in connectors:
         shutil.copy(KIT / f"assets/connectors/{c}.py", home / "connectors")
     t = time.time()
-    r = subprocess.run(["uv", "run", "-q", ".data-context/dctx.py", "build"], cwd=d, capture_output=True, text=True)
+    r = subprocess.run(["uv", "run", "-q", ".data-context/datawright.py", "build"], cwd=d, capture_output=True, text=True)
     if r.returncode:
         return {"error": r.stderr.strip().splitlines()[-1][:200] if r.stderr.strip() else "build failed"}, 0
     con = sqlite3.connect(home / "index.db")
     one = lambda sql: con.execute(sql).fetchone()[0]
-    lint = subprocess.run(["uv", "run", "-q", ".data-context/dctx.py", "lint"], cwd=d, capture_output=True, text=True).stdout
+    lint = subprocess.run(["uv", "run", "-q", ".data-context/datawright.py", "lint"], cwd=d, capture_output=True, text=True).stdout
     found = next((l.split(":", 1)[1].strip() for l in lint.splitlines() if l.startswith("best practices:")), "")
     out = {"datasets": one("select count(*) from datasets"), "edges": one("select count(*) from edges"), "column_edges": one("select count(*) from col_edges"),
            "readers": one("select count(*) from readers"), "runs": one("select count(*) from runs"), "unparsed": one("select count(*) from issues"),
@@ -73,7 +73,7 @@ def measure(d, connectors):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only")
-    ap.add_argument("--update", action="store_true", help="write what dctx finds now as the expected result")
+    ap.add_argument("--update", action="store_true", help="write what datawright finds now as the expected result")
     ap.add_argument("--all", action="store_true", help="include the large repos")
     ap.add_argument("--cache", default=str(Path.home() / ".cache/datawright-corpus"))
     a = ap.parse_args()

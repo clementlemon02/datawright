@@ -8,7 +8,7 @@ license: MIT
 
 Build it the way this repo already builds pipelines, and prove it on dev before calling it done. Never run anything against production.
 
-**Context first:** run `uv run .data-context/dctx.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `dctx set` or `dctx note`.
+**Context first:** run `uv run .data-context/datawright.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `datawright set` or `datawright note`.
 
 ## 1. Pin the requirements
 
@@ -49,7 +49,7 @@ Show the design in a few lines and get a yes before writing code.
 
 If history is needed: date ranges in chunks, concurrency limit, an estimate of cost and runtime from the dev run, how to check each chunk, and how to roll back.
 
-Run `dctx build` so the new output is in the index, then record its grain, key and meaning with `dctx set`, so the next task starts with it.
+Run `datawright build` so the new output is in the index, then record its grain, key and meaning with `datawright set`, so the next task starts with it.
 
 ## Output
 

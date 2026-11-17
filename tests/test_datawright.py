@@ -2,13 +2,13 @@
 # requires-python = ">=3.10"
 # dependencies = ["sqlglot>=30", "pyyaml>=6"]
 # ///
-"""Self-check for dctx: builds a tiny repo and checks lineage, notes, staleness, savings and the MCP server. Run: uv run tests/test_dctx.py"""
+"""Self-check for datawright: builds a tiny repo and checks lineage, notes, staleness, savings and the MCP server. Run: uv run tests/test_datawright.py"""
 import contextlib, importlib.util, io, json, os, sqlite3, subprocess, sys, tempfile
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("dctx", Path(__file__).parents[1] / "skills/data-context/scripts/dctx.py")
-dctx = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(dctx)
+spec = importlib.util.spec_from_file_location("datawright", Path(__file__).parents[1] / "skills/data-context/scripts/datawright.py")
+datawright = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(datawright)
 
 FILES = {
     "dbt_project.yml": "name: shop\n",
@@ -195,29 +195,29 @@ FILES = {
 def cli(*args):
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        dctx.main(list(args))
+        datawright.main(list(args))
     return out.getvalue()
 
 
 def main():
-    assert dctx.strip_jinja("{{ ref('pkg', 'm') }} {{ source('s', 't') }} {% if x %}a{% endif %}") == "m s.t  a "
+    assert datawright.strip_jinja("{{ ref('pkg', 'm') }} {{ source('s', 't') }} {% if x %}a{% endif %}") == "m s.t  a "
     # dbt selectors, the way dbt reads them: union across tokens, intersection within commas, + and n+ for graph hops
-    assert dctx.dbt_args("build -s 'tag:a+ stg_x' --exclude tag:b --target dev") == (["tag:a+", "stg_x"], ["tag:b"])
+    assert datawright.dbt_args("build -s 'tag:a+ stg_x' --exclude tag:b --target dev") == (["tag:a+", "stg_x"], ["tag:b"])
     models = {"m1": "models/m1.sql", "m2": "models/sub/m2.sql", "m3": "models/m3.sql"}
     names, tags = {**models, "src.t": None}, {"src.t": {"daily"}, "m3": {"daily"}}
     ups, downs = {"m1": {"src.t"}, "m2": {"m1"}}, {"src.t": {"m1"}, "m1": {"m2"}}
-    sel = lambda *tok: dctx.dbt_select(list(tok), models, names, tags, ups, downs)
+    sel = lambda *tok: datawright.dbt_select(list(tok), models, names, tags, ups, downs)
     assert sel("tag:daily+") == {"src.t", "m1", "m2", "m3"} and sel("+m2") == {"src.t", "m1", "m2"} and sel("m1+1") == {"m1", "m2"}
     assert sel("path:models/sub") == {"m2"} and sel("source:src+") == {"src.t", "m1", "m2"} and sel("tag:daily,m3") == {"m3"}
     assert sel("m*") == set(models) and sel("state:modified+") is None, "state needs dbt's run state"
-    resolve = dctx.resolver({"orders", "shop.raw.orders", "raw.orders"}, {})
+    resolve = datawright.resolver({"orders", "shop.raw.orders", "raw.orders"}, {})
     assert resolve("orders") == "shop.raw.orders" and resolve("raw.orders") == "shop.raw.orders"
 
     hints = Path(tempfile.mkdtemp())  # the engine a repo's own config names: Doris images and connectors, MaxCompute SDKs
     (hints / "docker-compose.yml").write_text("services:\n  fe:\n    image: apache/doris:2.1.7-fe\n")
     (hints / "requirements.txt").write_text("pyodps==0.12\n")
-    dctx.ROOT = hints
-    assert dctx.dialect_hint(["docker-compose.yml"]) == "doris" and dctx.dialect_hint(["requirements.txt"]) == "hive"
+    datawright.ROOT = hints
+    assert datawright.dialect_hint(["docker-compose.yml"]) == "doris" and datawright.dialect_hint(["requirements.txt"]) == "hive"
     repo = Path(tempfile.mkdtemp()) / "repo"  # its own parent, so the path-escape check can't see another run's file
     for c in ("lineage_yaml.py", "kafka_connect.py", "dagster.py", "odcs.py", "lookml.py", "superset.py", "metabase.py", "mybatis.py"):
         FILES[f".data-context/connectors/{c}"] = (Path(__file__).parents[1] / "skills/data-context/assets/connectors" / c).read_text()
@@ -346,10 +346,10 @@ def main():
 
     # best practices from the index: each rule fires on its planted case, and stays quiet where the practice is followed
     report = cli("lint")
-    dctx.ROOT, dctx.HOME = repo, repo / ".data-context"
+    datawright.ROOT, datawright.HOME = repo, repo / ".data-context"
     with sqlite3.connect(repo / ".data-context/index.db") as c:
         c.row_factory = sqlite3.Row
-        found = "\n".join(f"{at}  {msg}" for _, at, msg in dctx.practices(c))
+        found = "\n".join(f"{at}  {msg}" for _, at, msg in datawright.practices(c))
     assert "models/inc_orders.sql:1  inc_orders: incremental model with no unique_key" in found, found
     assert "sessions_clean: appends in silver.sessions" in found, "a shared script's table names its own task"
     for text in ("rerun duplicates rows:", "practices/sql/events.sql:1  dw.events: appends in load.events (0 2 * * *)",
@@ -366,7 +366,7 @@ def main():
                  "wave 2 (after the wave before has finished)\n  dw.events  load.events  0 2 * * *\n    airflow tasks clear load -t '^events$' -s 2026-11-01 -e 2026-11-03 -y",
                  "wave 3", "  ads.daily  report.daily", "wave 4", "  ods.feedback  report.feedback",
                  "dw.events appends (practices/sql/events.sql:1): delete 2026-11-01 to 2026-11-03 from it first",
-                 "after: dctx check ads.daily dw.events ods.events ods.feedback"):
+                 "after: datawright check ads.daily dw.events ods.events ods.feedback"):
         assert text in plan, f"backfill plan is missing {text!r}:\n{plan}"
     assert "Sup3rS3cret" not in report and "practices/conn.py:1" not in report and "practices/conn.py:3" not in report, "no values; comments and placeholders skipped"
 
@@ -387,10 +387,10 @@ def main():
     assert "unused keys: device_ref: no code here reads or joins it; the code joins this table on playerid" in ccard, ccard
     assert "member_ref → player" in cli("card", "bi.rollup"), "a rename of a joined key joins its concept"
     assert "rollup" not in cli("card", "bi.rollup").split("means")[1].split("n →")[0] and "n → " not in cli("card", "bi.rollup"), "a count is no concept"
-    dctx.ROOT, dctx.HOME = repo, repo / ".data-context"
+    datawright.ROOT, datawright.HOME = repo, repo / ".data-context"
     with sqlite3.connect(repo / ".data-context/index.db") as c:  # drift: one concept, another kind of type and a respelled name
         c.row_factory = sqlite3.Row
-        drift = "\n".join(f"{r} | {at} | {msg}" for r, at, msg in dctx.practices(c) if r.startswith("concept"))
+        drift = "\n".join(f"{r} | {at} | {msg}" for r, at, msg in datawright.practices(c) if r.startswith("concept"))
     assert "concept type differs | concepts/ddl.sql:3 | app.sessions.playerid is VARCHAR(36), but player is BIGINT in 3 other tables" in drift, drift
     assert "concept name differs | concepts/ddl.sql:3 | app.sessions.playerid holds player, which the team calls player_id" in drift, drift
     assert "uid holds" not in drift and "member_ref holds" not in drift, "other names aren't drift until a person confirms the concept"
@@ -407,7 +407,7 @@ def main():
     assert "amount_usd ← fin.requests.amount_cents ÷ 100" in cli("card", "rep.requests", "--budget", "3000")
     with sqlite3.connect(repo / ".data-context/index.db") as c:
         c.row_factory = sqlite3.Row
-        labels = [msg for r, at, msg in dctx.practices(c) if r == "value labels differ"]
+        labels = [msg for r, at, msg in datawright.practices(c) if r == "value labels differ"]
     assert labels == ["fin.requests.status = 3 is labelled 'declined' here but 'rejected' in 2 other places: reports will disagree"], labels
     path = cli("join", "fin.wallet", "app.sessions")
     assert "join crm.player_accounts t1 on t1.id = t0.player_id" in path and "join app.sessions t2 on cast(t2.playerid as bigint) = t1.id" in path, path
@@ -433,7 +433,7 @@ def main():
     assert any(r.startswith(",member,Member,") and "playerid" in r for r in om), om
     assert "app.sessions,playerid,member" in (repo / ".data-context/exports/openmetadata_column_terms.csv").read_text()
     cli("export", "dbt", "--all")
-    sm = (repo / ".data-context/exports/dctx_semantic_models.yml").read_text()
+    sm = (repo / ".data-context/exports/datawright_semantic_models.yml").read_text()
     assert "model: ref('customers')" in sm and "name: account\n    type: primary\n    expr: id" in sm, sm
     cli("concepts", "--write")
     yml = (repo / ".data-context/concepts.yml").read_text()
@@ -497,10 +497,10 @@ def main():
             {"method": "notifications/initialized"}, {"id": 2, "method": "tools/list"}, {"id": 3, "method": "nope"},
             *({"id": 10 + i, "method": "tools/call", "params": {"name": n, "arguments": a}} for i, (n, a) in enumerate(calls))]
     lines = "".join(json.dumps({"jsonrpc": "2.0", **r}) + "\n" for r in reqs) + "not json\n"
-    out = subprocess.run([sys.executable, dctx.__file__, "serve"], input=lines, capture_output=True, text=True, cwd=repo, timeout=60).stdout
+    out = subprocess.run([sys.executable, datawright.__file__, "serve"], input=lines, capture_output=True, text=True, cwd=repo, timeout=60).stdout
     replies = {m["id"]: m for m in map(json.loads, out.splitlines())}  # stdout must hold nothing but JSON-RPC
     assert len(replies) == 11 and replies[None]["error"]["code"] == -32700 and replies[3]["error"]["code"] == -32601, out
-    assert replies[1]["result"]["protocolVersion"] == "2025-06-18" and replies[1]["result"]["serverInfo"]["name"] == "dctx"
+    assert replies[1]["result"]["protocolVersion"] == "2025-06-18" and replies[1]["result"]["serverInfo"]["name"] == "datawright"
     assert {t["name"] for t in replies[2]["result"]["tools"]} == {"card", "code", "impact", "join", "advise", "backfill", "lineage", "search", "note", "set", "query"}
     text = lambda i: replies[i]["result"]["content"][0]["text"]
     assert not replies[10]["result"]["isError"] and "produced by pipelines/top.sql:1" in text(10), "rebuilds when a commit is newer"
@@ -542,19 +542,26 @@ def main():
         assert e.code == 1
 
     # updates: a newer copy of the skill installed in the repo is found, offered after a build, and copied in
-    newer = repo / ".claude/skills/data-context/scripts/dctx.py"
+    newer = repo / ".claude/skills/data-context/scripts/datawright.py"
     newer.parent.mkdir(parents=True)
-    newer.write_text(Path(dctx.__file__).read_text().replace(f'VERSION = "{dctx.VERSION}"', 'VERSION = "99.0.0"'))
-    assert "a newer dctx is installed (99.0.0): run dctx update" in cli("build")
-    assert "-> 99.0.0" in cli("update") and dctx.version_of((repo / ".data-context/dctx.py").read_text()) == (99, 0, 0)
+    newer.write_text(Path(datawright.__file__).read_text().replace(f'VERSION = "{datawright.VERSION}"', 'VERSION = "99.0.0"'))
+    assert "a newer datawright is installed (99.0.0): run datawright update" in cli("build")
+    assert "-> 99.0.0" in cli("update") and datawright.version_of((repo / ".data-context/datawright.py").read_text()) == (99, 0, 0)
     assert "is up to date" in cli("update")
     # the engine a repo declares
     hint_repo = Path(tempfile.mkdtemp())
     (hint_repo / "requirements.txt").write_text("dbt-trino==1.8.0\n")
-    dctx.ROOT = hint_repo
-    assert dctx.dialect_hint(["requirements.txt", "models/a.sql"]) == "trino"
-    assert dctx.dialect_hint(["a.hql", "b.hql", "c.sql"]) == "hive" and dctx.dialect_hint(["a.sql"]) is None
-    print("dctx self-check passed")
+    datawright.ROOT = hint_repo
+    assert datawright.dialect_hint(["requirements.txt", "models/a.sql"]) == "trino"
+    assert datawright.dialect_hint(["a.hql", "b.hql", "c.sql"]) == "hive" and datawright.dialect_hint(["a.sql"]) is None
+    fresh = Path(tempfile.mkdtemp())  # init installs the command, a short `dw` wrapper and the index in one go
+    (fresh / "a.sql").write_text("create table m.t as select 1 as x;\n")
+    subprocess.run(["git", "init", "-q"], cwd=fresh, check=True)
+    init = subprocess.run([sys.executable, str(Path(__file__).parents[1] / "skills/data-context/scripts/datawright.py"), "init"], cwd=fresh, capture_output=True, text=True)
+    assert init.returncode == 0 and "installed in .data-context/" in init.stdout, init.stdout + init.stderr
+    short = subprocess.run([str(fresh / ".data-context/dw"), "card", "m.t"], cwd=fresh, capture_output=True, text=True)
+    assert short.returncode == 0 and "m.t" in short.stdout, short.stdout + short.stderr
+    print("datawright self-check passed")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ license: MIT
 
 Add the few tests that would catch the failures that actually hurt, in the framework the repo already uses.
 
-**Context first:** run `uv run .data-context/dctx.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `dctx set` or `dctx note`.
+**Context first:** run `uv run .data-context/datawright.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `datawright set` or `datawright note`.
 
 ## 1. Find the framework
 

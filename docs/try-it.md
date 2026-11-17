@@ -11,18 +11,18 @@ We've tested the kit on public repos and one production platform, all by its aut
 No agent to hand? The index alone takes a minute, from the repo root:
 
 ```bash
-uv run <path to>/skills/data-context/scripts/dctx.py init
+uv run <path to>/skills/data-context/scripts/datawright.py init
 ```
 
 ```bash
-uv run .data-context/dctx.py coverage
+uv run .data-context/datawright.py coverage
 ```
 
 ```bash
-uv run .data-context/dctx.py lint
+uv run .data-context/datawright.py lint
 ```
 
-Nothing leaves your machine: dctx reads code, not data, and makes no network calls.
+Nothing leaves your machine: datawright reads code, not data, and makes no network calls.
 
 ## Tell us
 
@@ -34,4 +34,4 @@ Open an issue with the "First hour" template, or just answer these:
 4. **`coverage`**: what did it say it doesn't read in your repo?
 5. **Would you keep it?** What would make you?
 
-Wrong lineage is the most useful thing you can report: the table, what dctx said, and what's true.
+Wrong lineage is the most useful thing you can report: the table, what datawright said, and what's true.

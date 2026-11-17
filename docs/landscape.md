@@ -15,15 +15,15 @@ These map onto the kit directly: ownership and assumptions are what cards, notes
 | Company | Their problem and approach | Does the kit help? | What it would need |
 |---|---|---|---|
 | **Uber** | Tiers every dataset (0 to 5); a tier sets default SLAs and automatic quality checks, and lineage auto-generates tests up and downstream. 2,000+ critical datasets, ~90% of incidents detected ([Uber](https://www.uber.com/ie/en/blog/operational-excellence-data-quality/)) | Partly: `check` derives limits from schedules, `impact` gives up and downstream | **Tiers**: a `tier` per table that sets check limits and how strict `review` is |
-| **Airbnb** | Midas certification (a nine-step gold standard), then a 0 to 100 Data Quality Score to reach beyond certified tables ([Airbnb](https://medium.com/airbnb-engineering/data-quality-score-the-next-chapter-of-data-quality-at-airbnb-851dccda19c3)); "Wall" checks to prevent data bugs ([Airbnb](https://medium.com/airbnb-engineering/how-airbnb-built-wall-to-prevent-data-bugs-ad1b081d6e8f)) | Partly: `lint` lists the most-used tables with no grain or owner; `data-tests` | **A readiness score per table** from what dctx knows: owner, grain, tests, freshness check, open gotchas, downstream count |
+| **Airbnb** | Midas certification (a nine-step gold standard), then a 0 to 100 Data Quality Score to reach beyond certified tables ([Airbnb](https://medium.com/airbnb-engineering/data-quality-score-the-next-chapter-of-data-quality-at-airbnb-851dccda19c3)); "Wall" checks to prevent data bugs ([Airbnb](https://medium.com/airbnb-engineering/how-airbnb-built-wall-to-prevent-data-bugs-ad1b081d6e8f)) | Partly: `lint` lists the most-used tables with no grain or owner; `data-tests` | **A readiness score per table** from what datawright knows: owner, grain, tests, freshness check, open gotchas, downstream count |
 | **Monzo** | 12,000+ dbt models across 100+ teams, a four-layer "meshy" warehouse, ~40% lower costs ([InfoQ](https://infoq.com/news/2026/05/monzo-data-mesh)); column lineage from audit logs and ZetaSQL to find unused models and every Looker dashboard a change touches ([Monzo](https://medium.com/data-monzo/mapping-our-data-journey-with-column-lineage-56209c00606d)) | Strongly: column uses in any clause, `impact`, unused tables in `lint`, query-log imports | **BI lineage**: a LookML connector first (then Metabase, Superset, Tableau), so dashboards show up in `impact` |
 | **Netflix** | A central lineage service fed by Metacat metadata and S3 access logs, finding relationships ingestion missed (secondary: [Atlan](https://atlan.com/metacat-netflix-open-source-metadata-platform), [AIM](https://www.analyticsindiamag.com/how-does-netflix-handle-its-data-engineering-woes/)) | Partly: query-log and catalog imports add what code can't show | Nothing new; storage access logs could be one more import |
 | **LinkedIn** | Built DataHub as its metadata platform | Yes: DataHub imports and the MCP server in the catalog | Nothing new |
-| **Your Airflow + Flink + StarRocks platform** | DAGs that submit Flink jars by class name, topics from environment variables, 56 hand-written lineage YAML files for OpenMetadata | Strongly: across-repo Kafka lineage, `python_callable` links, `lineage_yaml` | **Exporting lineage**: generate those YAML files, or OpenLineage events, from what dctx already parses, instead of writing them by hand |
+| **Your Airflow + Flink + StarRocks platform** | DAGs that submit Flink jars by class name, topics from environment variables, 56 hand-written lineage YAML files for OpenMetadata | Strongly: across-repo Kafka lineage, `python_callable` links, `lineage_yaml` | **Exporting lineage**: generate those YAML files, or OpenLineage events, from what datawright already parses, instead of writing them by hand |
 
 ## Startups, SMEs and nonprofits, tested
 
-Public repos where a smaller organisation runs its real data stack, built and checked with `dctx build` and `coverage` (November 2026). Mattermost's and Meltano's own warehouse repos are no longer public.
+Public repos where a smaller organisation runs its real data stack, built and checked with `datawright build` and `coverage` (November 2026). Mattermost's and Meltano's own warehouse repos are no longer public.
 
 | Repo | Who and stack | Before fixes | After fixes, and what they were |
 |---|---|---|---|
@@ -42,7 +42,7 @@ Public repos where a smaller organisation runs its real data stack, built and ch
 | **Altimate Code** | MIT agent harness for dbt and SQL (OpenCode fork), 100+ deterministic tools, column lineage, FinOps ([repo](https://github.com/AltimateAI/altimate-code)) | Alternative (an agent you switch to) | **A lineage benchmark** like their 500-query one (vendor-reported); **cost analysis** as a future skill |
 | **Snowflake Cortex Code, Databricks Genie Code, BigQuery data engineering agent** | Agents native to each platform, governed by its access rules ([Verdantix](https://www.verdantix.com/client-portal/blog/databricks-bets-on-ai-agents-for-autonomous-data-engineering-with-genie-code), [Pulse](https://www.pulse.bot/big-data/news/cortex-code-expands-one-governed-agent-for-your-entire-data-stack-everywhere-you-work-f2afe559-012b-4ea8-bfee-360fcdfd4c54/), [Integrate.io](https://www.integrate.io/blog/ai-agents-data-engineering-teams.md)) | Connect (their MCP servers); we cover what spans platforms | **Governance as a feature**: respect the warehouse's access rules, keep an audit log of what agents queried, human review of changes |
 | **Astronomer agents** | Airflow skills and MCP server ([repo](https://github.com/astronomer/agents)) | Connect (setup installs them) | Nothing to copy |
-| **OpenLineage, DataHub, OpenMetadata** | Lineage standard and catalogs | Connect (imports) | **Write back**: export dctx's parsed lineage to them |
+| **OpenLineage, DataHub, OpenMetadata** | Lineage standard and catalogs | Connect (imports) | **Write back**: export datawright's parsed lineage to them |
 | **Monte Carlo, Bigeye** (observability) | Monitoring, incidents, lineage-based root cause | Coexist | Tiers and SLAs (as Uber) |
 
 ## Where the kit stands
@@ -54,7 +54,7 @@ Public repos where a smaller organisation runs its real data stack, built and ch
 
 ## Proposed additions, in order
 
-1. **Breaking-change labels in `review`**, from SQLMesh. Small: dctx already knows the diff and every column use.
+1. **Breaking-change labels in `review`**, from SQLMesh. Small: datawright already knows the diff and every column use.
 2. **Tiers**, from Uber. A `tier` field that tightens `check` limits and marks tier-0 changes in `review`. Done.
 3. **BI lineage**, from Monzo. A LookML connector first, so dashboards show up in `impact` and `review`. Done for Looker.
 4. **Data diff in `review`**, from Recce. Guarded before-and-after queries on dev and prod, where a dev environment exists. Done (`--diff`).

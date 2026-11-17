@@ -1,12 +1,12 @@
-# Connectors: teach dctx your stack
+# Connectors: teach datawright your stack
 
-`dctx` reads SQL in most dialects, SQL inside Python, Java, Scala and Kotlin, dbt manifests, Airflow DAGs, Spark and Flink jobs, Kafka topics, and OpenLineage, DataHub and OpenMetadata exports. Everything else, such as an in-house pipeline framework, jobs defined in YAML, another orchestrator or hand-written lineage, it learns from a **connector**: a small Python file in `.data-context/connectors/`, committed with the repo.
+`datawright` reads SQL in most dialects, SQL inside Python, Java, Scala and Kotlin, dbt manifests, Airflow DAGs, Spark and Flink jobs, Kafka topics, and OpenLineage, DataHub and OpenMetadata exports. Everything else, such as an in-house pipeline framework, jobs defined in YAML, another orchestrator or hand-written lineage, it learns from a **connector**: a small Python file in `.data-context/connectors/`, committed with the repo.
 
 ## The loop
 
-1. `uv run .data-context/dctx.py coverage` lists what dctx doesn't read yet, largest gaps first, with a hint for each: files that look like lineage, DAG definitions or SQL inside config, DAG tasks it can't link to code, unparsed SQL, and tools it sees but has no reader for.
-2. For the largest gap, add a ready-made connector (`uv run .data-context/dctx.py init --connectors <name>`, listed at the end), or write one (below). Read two or three of the files first, so `match` and `extract` fit their real shape.
-3. `dctx build`, then `coverage` again. Check a few cards for the tables the connector touched, and that its names line up with the names in code: the coverage line "connector edges: N, M touching a table found in code" shows how many connect.
+1. `uv run .data-context/datawright.py coverage` lists what datawright doesn't read yet, largest gaps first, with a hint for each: files that look like lineage, DAG definitions or SQL inside config, DAG tasks it can't link to code, unparsed SQL, and tools it sees but has no reader for.
+2. For the largest gap, add a ready-made connector (`uv run .data-context/datawright.py init --connectors <name>`, listed at the end), or write one (below). Read two or three of the files first, so `match` and `extract` fit their real shape.
+3. `datawright build`, then `coverage` again. Check a few cards for the tables the connector touched, and that its names line up with the names in code: the coverage line "connector edges: N, M touching a table found in code" shows how many connect.
 4. Repeat until the gaps left don't matter. Commit the connectors: they're how every agent on the team gets the same picture.
 
 ## Writing one
@@ -23,18 +23,18 @@ A connector is a module with two functions. `match(path)` gets each repo path an
 | `{"column_edge": ["db.source.col", "db.target.col"]}` | Column lineage |
 | `{"dataset": "db.table", "description": "…", "owner": "…", "kind": "…"}` | What a table is, without saying who writes it (descriptions from schema files, catalogs). A `kind` containing "dashboard" lists it under "Dashboards reached" in `review` |
 | `{"env": ["KAFKA_TOPIC_ORDERS", "shop.orders"]}` | What a deploy-time variable is set to, when the deploy config isn't in the repos but something else records it (lineage docs, a runbook). Topics and tables named `env:<VAR>` in code take that value |
-| `{"layout": ["db.table", "partition", ["event_date"]]}` | A key declared outside DDL (a framework's metadata file): `partition`, `cluster`, `sort` or `distribution`. `dctx advise` compares it with how the code filters and joins the table |
+| `{"layout": ["db.table", "partition", ["event_date"]]}` | A key declared outside DDL (a framework's metadata file): `partition`, `cluster`, `sort` or `distribution`. `datawright advise` compares it with how the code filters and joins the table |
 | `{"contract": ["db.table", "col", "type", required]}` | What a data contract promises consumers. A required column the code stops producing shows on the card and in `lint`, and blocks `review --strict` |
 | `{"run": {"dag": "…", "task": "…", "schedule": "…", "lines": [first, last], "file": "other/path"}}` | The job that runs these lines of this file (or of `file`, for a config that schedules a sibling SQL file), shown on cards as "runs in". With `"dataset": "db.table"` instead, it's placed on whatever code produces that table, for schedules defined apart from the code |
 
-Two module settings: `OWNS = True` makes the connector read its files *instead of* the built-in reader. Use it when the framework gives plain SQL a meaning dctx can't see, such as "a SELECT whose destination is its folder". `ROOT` is set by dctx to the repo root, for reading a shared file such as a schedule.
+Two module settings: `OWNS = True` makes the connector read its files *instead of* the built-in reader. Use it when the framework gives plain SQL a meaning datawright can't see, such as "a SELECT whose destination is its folder". `ROOT` is set by datawright to the repo root, for reading a shared file such as a schedule.
 
 Connectors also get the files in subfolders of `.data-context/imports/`: exports that aren't committed, such as BI definitions. A ZIP there is unpacked into a folder of the same name on each build (a newer ZIP replaces it).
 
-Name Kafka topics `kafka:<topic>`, so they join the topics dctx finds in Flink and Spark code. Give anything that isn't a warehouse table a namespace the same way (`looker:view.orders`, `tableau:workbook.sales`): a name with a colon never stands in for a short table name, so a BI view called `orders` doesn't make `orders` in SQL ambiguous. Names are matched loosely: `mart.orders` lines up with `warehouse.mart.orders` when that's the only match.
+Name Kafka topics `kafka:<topic>`, so they join the topics datawright finds in Flink and Spark code. Give anything that isn't a warehouse table a namespace the same way (`looker:view.orders`, `tableau:workbook.sales`): a name with a colon never stands in for a short table name, so a BI view called `orders` doesn't make `orders` in SQL ambiguous. Names are matched loosely: `mart.orders` lines up with `warehouse.mart.orders` when that's the only match.
 
 ```python
-"""dctx connector: jobs defined in pipelines/*.yaml as {name, schedule, steps: [{sql}]}."""
+"""datawright connector: jobs defined in pipelines/*.yaml as {name, schedule, steps: [{sql}]}."""
 import yaml
 
 def match(path):
@@ -50,7 +50,7 @@ def extract(path, text):
 
 ## Rules
 
-- A connector runs during `dctx build`, locally and in CI, with the same trust as the repo's own code. Keep it to reading the file it's given.
+- A connector runs during `datawright build`, locally and in CI, with the same trust as the repo's own code. Keep it to reading the file it's given.
 - If a connector fails on a file, the build reports it in `lint` and carries on; the error is stored without quoting the file.
 - Never put credentials or data values in a connector. Read names and SQL, not rows.
 - Something only the warehouse knows (query history, a catalog's API) is an export instead: see [warehouse-export.md](warehouse-export.md).

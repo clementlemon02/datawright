@@ -1,8 +1,8 @@
-"""dctx connector: Kafka Connect connector configs (JSON, as posted to the Connect REST API, or .properties).
+"""datawright connector: Kafka Connect connector configs (JSON, as posted to the Connect REST API, or .properties).
 
 Source connectors (Debezium CDC: table.include.list with topic.prefix or database.server.name) give table -> topic lineage;
 sink connectors (topics or topics.regex, with table.name.format or a database/table option) give topic -> table lineage.
-Topics are named kafka:<topic>, like the topics dctx finds in Flink and Spark jobs, so both sides connect.
+Topics are named kafka:<topic>, like the topics datawright finds in Flink and Spark jobs, so both sides connect.
 Copy to .data-context/connectors/ and adjust FILES to where your configs live.
 """
 import json

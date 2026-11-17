@@ -26,7 +26,7 @@ Every team already wrote its data dictionary, scattered through its code:
 
 On one real platform (an Airflow repo, a Flink jar and a Java service), a plain text count found 552 joins between differently named columns across 95 name pairs (`id = player_id`, `entity_id = id`, `player_id = playerid`) and 1,289 `CASE … WHEN` expressions. The dictionary is there; it's just spread over a thousand places.
 
-dctx already parses all of this, across every repo and engine, without touching data. The strategy: **compile the dictionary from usage, have humans confirm it once, then enforce it where code changes.** It's the same move that made lineage work: deterministic extraction first, judgment only where needed.
+datawright already parses all of this, across every repo and engine, without touching data. The strategy: **compile the dictionary from usage, have humans confirm it once, then enforce it where code changes.** It's the same move that made lineage work: deterministic extraction first, judgment only where needed.
 
 ### 1. Concepts, from usage (no data read)
 
@@ -45,12 +45,12 @@ Where lineage transforms a concept, record the conversion: unit (`/100`, `*1000`
 
 ### 3. A dictionary file, reviewed like code
 
-`dctx concepts` writes proposals to `.data-context/concepts.yml`: concept, canonical name and type, home, aliases, conversions, value dictionary, and the evidence for each. Humans (or an agent, with a human approving the merge request) rename, merge, split and describe. Confirmed entries are never overwritten; new evidence becomes new proposals. Ownership is the file's history.
+`datawright concepts` writes proposals to `.data-context/concepts.yml`: concept, canonical name and type, home, aliases, conversions, value dictionary, and the evidence for each. Humans (or an agent, with a human approving the merge request) rename, merge, split and describe. Confirmed entries are never overwritten; new evidence becomes new proposals. Ownership is the file's history.
 
 ### 4. Everywhere it's needed
 
 - **Cards** say what each column is: `player_id → concept player (home crm.players.id; also uid, user_id)`, with its value dictionary.
-- **Relationships**: `dctx erd <table>` and card lines like `joins crm.players on player_id = id (12 queries)`, so an agent picks the right join path the first time.
+- **Relationships**: `datawright erd <table>` and card lines like `joins crm.players on player_id = id (12 queries)`, so an agent picks the right join path the first time.
 - **Lint**: one concept with several types (forces casts, breaks pruning), several names, or conversions applied inconsistently (one consumer divides by 100, another doesn't).
 - **Review**: a branch adding `userid VARCHAR` is told the team's name for it is `player_id BIGINT`; a new `CASE` on a known coded column is checked against the dictionary.
 - **Agents**: the MCP server answers "what is X" and "how do I join A to B" from concepts, which is the schema-linking step research says fails most.
@@ -78,21 +78,21 @@ Export concepts as dbt semantic-model entities, an OpenMetadata or DataHub gloss
 
 `benchmarks/meaning/` builds a small gaming warehouse with real drift (the player key is `id`, `user_ref`, `playerid` as text and `member_ref`; agents are keyed by `code`; request `type` and `status` are explained only by report SQL; a decoy `ref` column) and asks five questions, each needing a renamed key, a coded value or both. An agent (Claude Code, Sonnet, headless, project settings only, a fixed tool allowlist) writes `answer.sql`, which is run against seeded data and compared with the reference answer. Two conditions: the repo as is, and the repo with the data-context skill installed and its index built, as setup leaves it. 50 runs, $9 in total (November 2026):
 
-| Setting | Right, baseline / dctx | Cost per question | Turns | Seconds |
+| Setting | Right, baseline / datawright | Cost per question | Turns | Seconds |
 |---|---|---|---|---|
 | Small repo (8 SQL files), warehouse access | 5/5 / 5/5 | $0.22 / $0.15 | 11.0 / 9.0 | 26 / 24 |
 | Big repo (211 files: decoy `user_ref` and `status` meanings, a legacy table with reversed codes), warehouse access | 10/10 / 10/10 | $0.19 / $0.16 | 12.6 / 9.6 | 36 / 27 |
 | Big repo, no warehouse access (code only) | 10/10 / 10/10 | $0.20 / $0.17 | 9.9 / 9.9 | 27 / 31 |
 
-**What it shows.** A strong model got every answer right without dctx, even through 200 decoy files and without data to check against: the meaning was in the code, and it found it. dctx made the same answers 18% cheaper and took 14% fewer turns overall. So on this benchmark the gain is efficiency, not correctness; the accuracy claim isn't shown yet.
+**What it shows.** A strong model got every answer right without datawright, even through 200 decoy files and without data to check against: the meaning was in the code, and it found it. datawright made the same answers 18% cheaper and took 14% fewer turns overall. So on this benchmark the gain is efficiency, not correctness; the accuracy claim isn't shown yet.
 
-**What it changed anyway.** Building the benchmark found four bugs that would have hurt agents on any repo, all fixed: joins through `CAST` weren't recorded; `dctx join` didn't write the cast a text key needs; a code decoded inside `SUM(CASE …) / 100` wasn't read; and concepts whose every table names them differently got a poor name. It also found that setup's AGENTS.md never told agents about `dctx join` or the card's `means` and `values`; it does now.
+**What it changed anyway.** Building the benchmark found four bugs that would have hurt agents on any repo, all fixed: joins through `CAST` weren't recorded; `datawright join` didn't write the cast a text key needs; a code decoded inside `SUM(CASE …) / 100` wasn't read; and concepts whose every table names them differently got a poor name. It also found that setup's AGENTS.md never told agents about `datawright join` or the card's `means` and `values`; it does now.
 
 ### The harder suite
 
 `--suite hard` (`make_hard.py`): no single file answers a question. Join chains of three and four hops with a renamed key at every hop, each hop written in a different file; request codes decoded only piecemeal (`status = 2` as `approved_requests` in one report, `status = 3` as `rejected_count` in another); one trap column, `app.sessions.player_id`, still populated but stale, where the team's code goes through `devices.owner_ref`; 1,500 noise files with decoy meanings and a legacy table with reversed codes. Six questions, two repeats, warehouse access, 48 runs, $8 (November 2026):
 
-| Model | Right, baseline | Right, with dctx | Cost per question | Turns |
+| Model | Right, baseline | Right, with datawright | Cost per question | Turns |
 |---|---|---|---|---|
 | Sonnet | 7/12 | **12/12** | $0.26 / $0.22 | 15.5 / 13.4 |
 | Haiku | 3/12 | **7/12** | $0.13 / $0.09 | 18.4 / 13.3 |
@@ -100,17 +100,17 @@ Export concepts as dbt semantic-model entities, an OpenMetadata or DataHub gloss
 Every wrong answer was one of two things: joining on the stale `sessions.player_id` (a plausible name, rows come back, the numbers are wrong), or a wrong `type` or `status` code, once taken from the legacy file whose codes are reversed. Having the data to query didn't save the baseline: wrong joins return plausible rows.
 
 Read it with these limits in mind:
-- **Small and home-made.** 12 runs a cell, one synthetic repo, written by the people who built dctx with its strengths in mind. It shows the mechanism, not a general accuracy number.
-- **Haiku used dctx in only 6 of its 12 dctx runs**, despite the repo's instructions. When it did, it was right 5 times of 6; when it didn't, 2 of 6. Getting weaker models to reach for the tool is half the problem.
-- **After two changes, Haiku reached for dctx in 9 of 12 runs (from 6) and got 8 of 12 right (from 7).** The changes: firmer wording in setup's AGENTS.md, and an `unused keys` line on cards for key-like columns no code reads or joins. More use; the accuracy change is within noise at 12 runs.
-- **dctx avoided the stale column only through `dctx join`** when this was first run; the `unused keys` card line now names it.
+- **Small and home-made.** 12 runs a cell, one synthetic repo, written by the people who built datawright with its strengths in mind. It shows the mechanism, not a general accuracy number.
+- **Haiku used datawright in only 6 of its 12 datawright runs**, despite the repo's instructions. When it did, it was right 5 times of 6; when it didn't, 2 of 6. Getting weaker models to reach for the tool is half the problem.
+- **After two changes, Haiku reached for datawright in 9 of 12 runs (from 6) and got 8 of 12 right (from 7).** The changes: firmer wording in setup's AGENTS.md, and an `unused keys` line on cards for key-like columns no code reads or joins. More use; the accuracy change is within noise at 12 runs.
+- **datawright avoided the stale column only through `datawright join`** when this was first run; the `unused keys` card line now names it.
 
 **Next.** A real repo with questions and answers checked by its engineers; more repeats; other agents (Codex, Cursor); and the two product gaps above.
 
 ## Build order
 
-1. Join pairs and identity lineage into concepts; relationships on cards; `concepts.yml` proposals. **Done**: `dctx concepts`, `dctx join`, `joins` and `means` on cards, MCP `join`. On a production platform's repos (Airflow, a Flink jar, a Java service) it found 15 concepts, kept a referrer column in the player concept because the code joins it to the players table, and flagged the app-database and warehouse copies of one entity as likely one concept.
+1. Join pairs and identity lineage into concepts; relationships on cards; `concepts.yml` proposals. **Done**: `datawright concepts`, `datawright join`, `joins` and `means` on cards, MCP `join`. On a production platform's repos (Airflow, a Flink jar, a Java service) it found 15 concepts, kept a referrer column in the player concept because the code joins it to the players table, and flagged the app-database and warehouse copies of one entity as likely one concept.
 2. Review and lint checks for new drift (names, types). **Done**: kinds of type compared within each concept, respelled names flagged, and once a concept is confirmed any name not in its `roles` too; shown in `lint` and on the merge request. A MyBatis connector came with it, since the drift on the test platform lived in Java services' mapper XML.
 3. Conversions and `CASE` value dictionaries. **Done**: labels from `CASE`, searched `CASE` and `DECODE`; from conditional aggregates' aliases when no label is written (`SUM(CASE WHEN type = 1 THEN amount END) AS deposit_amount` gives `type 1 ≈ deposit`), which is how most of the test platform's `CASE` expressions encode meaning; unit, epoch and time-zone conversions; and a check for one code labelled two ways. On the test platform it named a four-value payout type from one `CASE`, a three-level hierarchy code from aliases, and a request type from seven conditional aggregates.
-4. Exports (dbt entities, OpenMetadata glossary), then OSI. **Done**: `dctx export dbt | openmetadata | datahub`; the dbt file passes `dbt parse` (1.12) and the DataHub file passes DataHub's own glossary ingestion. A dbt project's entities, in either the `semantic_models:` or the newer per-column form, are read back as confirmed concepts (jaffle-shop's six arrive that way). Open Semantic Interchange waits for its spec.
+4. Exports (dbt entities, OpenMetadata glossary), then OSI. **Done**: `datawright export dbt | openmetadata | datahub`; the dbt file passes `dbt parse` (1.12) and the DataHub file passes DataHub's own glossary ingestion. A dbt project's entities, in either the `semantic_models:` or the newer per-column form, are read back as confirmed concepts (jaffle-shop's six arrive that way). Open Semantic Interchange waits for its spec.
 5. Optional value-overlap check through `query_command` for low-confidence concepts.

@@ -1,7 +1,7 @@
-"""dctx connector: dbt schema files (models/**/*.yml, version 2), for repos that don't commit a compiled manifest.
+"""datawright connector: dbt schema files (models/**/*.yml, version 2), for repos that don't commit a compiled manifest.
 
 Reads model, source, seed and snapshot descriptions and their columns (name, data_type, description). Lineage still comes
-from the models' SQL, which dctx reads with ref() and source() resolved; with target/manifest.json present, dctx reads
+from the models' SQL, which datawright reads with ref() and source() resolved; with target/manifest.json present, datawright reads
 that instead and this adds little. Copy to .data-context/connectors/.
 """
 import re

@@ -8,9 +8,9 @@ license: MIT
 
 Measure first, change one thing at a time, and prove the output is identical.
 
-**Context first:** run `uv run .data-context/dctx.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `dctx set` or `dctx note`.
+**Context first:** run `uv run .data-context/datawright.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `datawright set` or `datawright note`.
 
-Start with `uv run .data-context/dctx.py advise` (or `advise <table>`): partition, clustering and distribution keys from how the repo's code filters and joins each table, against its declared layout. Confirm with the warehouse's own stats before changing a big table.
+Start with `uv run .data-context/datawright.py advise` (or `advise <table>`): partition, clustering and distribution keys from how the repo's code filters and joins each table, against its declared layout. Confirm with the warehouse's own stats before changing a big table.
 
 ## 1. Measure
 

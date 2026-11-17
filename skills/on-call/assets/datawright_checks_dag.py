@@ -1,4 +1,4 @@
-"""Freshness and volume checks for the tables this repo produces (dctx check). A stale or suddenly small table fails the task,
+"""Freshness and volume checks for the tables this repo produces (datawright check). A stale or suddenly small table fails the task,
 so it alerts through the same Airflow alerting as any other failure. Adjust REPO and the schedule."""
 from datetime import datetime
 
@@ -8,7 +8,7 @@ from airflow.operators.bash import BashOperator
 REPO = "/opt/airflow/repo"  # a checkout of this repo on the workers, with .data-context/config.yml (dialect, query_command)
 
 with DAG(
-    dag_id="dctx_checks",
+    dag_id="datawright_checks",
     schedule="*/30 * * * *",
     start_date=datetime(2026, 1, 1),
     catchup=False,
@@ -18,5 +18,5 @@ with DAG(
 ) as dag:
     BashOperator(
         task_id="freshness_and_volume",
-        bash_command=f"cd {REPO} && uv run --no-config .data-context/dctx.py build >/dev/null && uv run --no-config .data-context/dctx.py check --all",
+        bash_command=f"cd {REPO} && uv run --no-config .data-context/datawright.py build >/dev/null && uv run --no-config .data-context/datawright.py check --all",
     )

@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["sqlglot>=30", "pyyaml>=6"]
 # ///
-"""Self-check for bi_export.py against a stand-in Superset and Metabase API, then dctx reading what it wrote."""
+"""Self-check for bi_export.py against a stand-in Superset and Metabase API, then datawright reading what it wrote."""
 import io
 import json
 import shutil
@@ -84,20 +84,20 @@ def main():
     assert out.returncode == 0 and "1 tables, 1 questions and models, 1 dashboards" in out.stdout, out.stdout + out.stderr
     assert all(s[2] == "mb-key" for s in seen if s[1].startswith("/api/") and not s[1].startswith("/api/v1"))
 
-    shutil.copy(SKILL / "scripts/dctx.py", repo / ".data-context")
+    shutil.copy(SKILL / "scripts/datawright.py", repo / ".data-context")
     (repo / "docker/superset_config.py").parent.mkdir()
     (repo / "docker/superset_config.py").write_text("ROW_LIMIT = 5000\n")
     (repo / "Dockerfile").write_text("FROM apache/superset:6.1.0\n")
     hidden = Path(tempfile.mkdtemp()) / "parked"  # coverage before any export: it says how to bring the dashboards in
     shutil.move(repo / ".data-context/imports", hidden)
-    run(".data-context/dctx.py", "build")
-    assert "Superset is used here, but its dashboards aren't in the index: add the superset connector (`dctx init --connectors superset`)" in run(".data-context/dctx.py", "coverage").stdout
+    run(".data-context/datawright.py", "build")
+    assert "Superset is used here, but its dashboards aren't in the index: add the superset connector (`datawright init --connectors superset`)" in run(".data-context/datawright.py", "coverage").stdout
     shutil.move(hidden, repo / ".data-context/imports")
-    built = run(".data-context/dctx.py", "build")
+    built = run(".data-context/datawright.py", "build")
     assert built.returncode == 0, built.stderr
-    imp = run(".data-context/dctx.py", "impact", "mart.orders.amount").stdout
+    imp = run(".data-context/datawright.py", "impact", "mart.orders.amount").stdout
     assert "superset:dashboard.ops.sales" in imp and "metabase:dashboard.ops.order_total" in imp, imp
-    assert "Superset is used here" not in run(".data-context/dctx.py", "coverage").stdout
+    assert "Superset is used here" not in run(".data-context/datawright.py", "coverage").stdout
     print("bi export self-check passed")
 
 

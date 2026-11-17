@@ -2,14 +2,14 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Fetch BI definitions into .data-context/imports/ for dctx: read-only, run from the repo root.
+"""Fetch BI definitions into .data-context/imports/ for datawright: read-only, run from the repo root.
 
   uv run bi_export.py superset   # SUPERSET_URL, plus SUPERSET_ACCESS_TOKEN or SUPERSET_USERNAME + SUPERSET_PASSWORD
   uv run bi_export.py metabase   # METABASE_URL, plus METABASE_API_KEY (Admin > Authentication > API keys) or METABASE_SESSION
 
 Superset: every dashboard's export ZIP (datasets, charts, dashboards; never data or database passwords).
 Metabase: databases' table and field names, questions, models and dashboards. Neither fetches rows.
-Use an account that can see the dashboards but not change them. Schedule it (cron, an Airflow task) to keep dctx current.
+Use an account that can see the dashboards but not change them. Schedule it (cron, an Airflow task) to keep datawright current.
 """
 import json
 import os
@@ -61,7 +61,7 @@ def superset():
     OUT.mkdir(parents=True, exist_ok=True)
     zipped = call(base, "/api/v1/dashboard/export/?q=" + urllib.parse.quote(f"!({','.join(map(str, ids))})"), auth)
     (OUT / "superset.zip").write_bytes(zipped)
-    print(f"wrote {OUT / 'superset.zip'}: {len(ids)} dashboards with their charts and datasets; dctx build unpacks it")
+    print(f"wrote {OUT / 'superset.zip'}: {len(ids)} dashboards with their charts and datasets; datawright build unpacks it")
 
 
 def metabase():

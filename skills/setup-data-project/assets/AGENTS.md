@@ -19,17 +19,17 @@
 - Docs: <link to existing README / wiki instead of copying it here>
 
 ## Data context
-- Before touching a dataset: `uv run .data-context/dctx.py card <name>` (lineage, schema, readers, owners, gotchas in ~200 tokens). Impact of a change: `impact <name>[.<column>]`. Find: `search <words>`.
-- **Before writing any SQL that joins tables, run `uv run .data-context/dctx.py join <table> <table>`** and use the path it gives: it's how this repo's code joins them. Don't join on a column because of its name: column names here drift, and some key-like columns are stale (the card's `unused keys` line names them). A card's `means` line says what each key holds and its other names, and `values` what codes mean (`status 2 = approved`).
-- Index missing or older than the latest commit: `uv run .data-context/dctx.py build` (seconds, no model tokens).
-- Before opening a merge request: `uv run .data-context/dctx.py review` (impact of the branch; CI posts the same report).
-- Stale or missing data: `uv run .data-context/dctx.py check <name>`, then the `on-call` skill. After updating the kit: `dctx update`.
-- Look at the data: `uv run .data-context/dctx.py query "select …"` (one read-only SELECT, rows capped). <Only if query_command is set.>
-- Learned something non-obvious? `dctx set <name> grain=… key=…` or `dctx note <name> "<what>" --kind gotcha`, in the same change.
+- Before touching a dataset: `uv run .data-context/datawright.py card <name>` (lineage, schema, readers, owners, gotchas in ~200 tokens). Impact of a change: `impact <name>[.<column>]`. Find: `search <words>`.
+- **Before writing any SQL that joins tables, run `uv run .data-context/datawright.py join <table> <table>`** and use the path it gives: it's how this repo's code joins them. Don't join on a column because of its name: column names here drift, and some key-like columns are stale (the card's `unused keys` line names them). A card's `means` line says what each key holds and its other names, and `values` what codes mean (`status 2 = approved`).
+- Index missing or older than the latest commit: `uv run .data-context/datawright.py build` (seconds, no model tokens).
+- Before opening a merge request: `uv run .data-context/datawright.py review` (impact of the branch; CI posts the same report).
+- Stale or missing data: `uv run .data-context/datawright.py check <name>`, then the `on-call` skill. After updating the kit: `datawright update`.
+- Look at the data: `uv run .data-context/datawright.py query "select …"` (one read-only SELECT, rows capped). <Only if query_command is set.>
+- Learned something non-obvious? `datawright set <name> grain=… key=…` or `datawright note <name> "<what>" --kind gotcha`, in the same change.
 
 ## Tickets
 - Tracker: <Jira project CMS / Linear team / GitHub Issues>. Branch `<KEY>-short-name`, commit messages start with the key.
-- Work a ticket with the `work-ticket` skill. Link what you learn to it: `dctx note <dataset> "…" --source <KEY>`.
+- Work a ticket with the `work-ticket` skill. Link what you learn to it: `datawright note <dataset> "…" --source <KEY>`.
 - Comments, status changes and new tickets only after a person approves them.
 
 ## Rules for agents

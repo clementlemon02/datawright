@@ -8,7 +8,7 @@ license: MIT
 
 Review the changed SQL or the query the user names. Identify the engine and dialect from the code first. Wrong numbers are worse than slow queries, so check correctness first.
 
-**Context first:** run `uv run .data-context/dctx.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `dctx set` or `dctx note`.
+**Context first:** run `uv run .data-context/datawright.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `datawright set` or `datawright note`.
 
 ## Correctness
 

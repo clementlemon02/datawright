@@ -2,12 +2,12 @@
 # requires-python = ">=3.10"
 # dependencies = ["duckdb>=1.1"]
 # ///
-"""Do agents write the right SQL on a warehouse whose keys and codes drifted, with and without dctx?
+"""Do agents write the right SQL on a warehouse whose keys and codes drifted, with and without datawright?
 
 uv run run.py [--model sonnet] [--reps 1] [--tasks 1,2] [--jobs 4]
 Each run copies a fresh repo (make_repo.py), asks Claude Code (headless, project settings only, no user plugins) one
 question, and runs the answer.sql it writes against the seeded warehouse; rows are compared with the reference answer.
-Conditions: baseline (the repo as is) and dctx (the data-context skill installed and its index built, as setup leaves it).
+Conditions: baseline (the repo as is) and datawright (the data-context skill installed and its index built, as setup leaves it).
 Results go to results/<timestamp>.jsonl and a summary is printed. Costs real API money: about $0.3 to $1 a run."""
 import argparse
 import concurrent.futures
@@ -54,15 +54,15 @@ NO_DATA = ("You're working in a data engineering repo for an online gaming platf
 def setup(work, condition, n_noise=0, data=True, suite="basic"):
     (make_hard if suite == "hard" else make_repo).build(work, n_noise)
     subprocess.run(["git", "init", "-q"], cwd=work, check=True)
-    if condition == "dctx":  # what setup-data-project leaves: the skill, AGENTS.md's data-context section, a built index
+    if condition == "datawright":  # what setup-data-project leaves: the skill, AGENTS.md's data-context section, a built index
         shutil.copytree(KIT / "skills/data-context", work / ".claude/skills/data-context")
         (work / ".data-context").mkdir()
-        shutil.copy(KIT / "skills/data-context/scripts/dctx.py", work / ".data-context/dctx.py")
+        shutil.copy(KIT / "skills/data-context/scripts/datawright.py", work / ".data-context/datawright.py")
         (work / ".data-context/config.yml").write_text("dialect: duckdb\n" + ("query_command: python3 sql.py {sql}\n" if data else ""))
         template = (KIT / "skills/setup-data-project/assets/AGENTS.md").read_text()
         section = template[template.index("## Data context"):].split("\n## ")[0]
         (work / "CLAUDE.md").write_text(re_strip(section) + "\n")
-        subprocess.run(["uv", "run", "-q", ".data-context/dctx.py", "build"], cwd=work, check=True, capture_output=True)
+        subprocess.run(["uv", "run", "-q", ".data-context/datawright.py", "build"], cwd=work, check=True, capture_output=True)
 
 
 def re_strip(text):  # template placeholders (<Only if …>) out
@@ -84,7 +84,7 @@ def one(task, condition, rep, model, n_noise=0, data=True, suite="basic"):
     cmd = ["claude", "-p", (PROMPT if data else NO_DATA).format(q=q), "--model", model, "--output-format", "stream-json", "--verbose", "--max-turns", "30",
            "--setting-sources", "project", "--strict-mcp-config",  # no user plugins, hooks or MCP servers
            "--allowedTools", "Read", "Grep", "Glob", "Write", "Edit", "Skill",  # nothing else: unlisted tools are denied headless
-           "Bash(uv run .data-context/dctx.py:*)", "Bash(uv run -q .data-context/dctx.py:*)"] + (["Bash(python3 sql.py:*)"] if data else [])
+           "Bash(uv run .data-context/datawright.py:*)", "Bash(uv run -q .data-context/datawright.py:*)"] + (["Bash(python3 sql.py:*)"] if data else [])
     try:
         out = subprocess.run(cmd, cwd=work, capture_output=True, text=True, timeout=900).stdout
     except subprocess.TimeoutExpired:
@@ -92,7 +92,7 @@ def one(task, condition, rep, model, n_noise=0, data=True, suite="basic"):
     events = [json.loads(l) for l in out.splitlines() if l.startswith("{")]
     result = next((e for e in events if e.get("type") == "result"), {})
     calls = [b for e in events if e.get("type") == "assistant" for b in e["message"].get("content", []) if b.get("type") == "tool_use"]
-    dctx_calls = sum("dctx.py" in json.dumps(b.get("input")) for b in calls)
+    datawright_calls = sum("datawright.py" in json.dumps(b.get("input")) for b in calls)
     answer = (work / "answer.sql").read_text() if (work / "answer.sql").exists() else ""
     con = duckdb.connect(str(work / "warehouse.duckdb"), read_only=True)
     try:
@@ -103,7 +103,7 @@ def one(task, condition, rep, model, n_noise=0, data=True, suite="basic"):
     con.close()
     return {"task": task, "condition": condition, "rep": rep, "model": model, "noise": n_noise, "data": data, "suite": suite, "correct": correct, "error": error,
             "cost": result.get("total_cost_usd"), "turns": result.get("num_turns"), "seconds": round(time.time() - started),
-            "tool_calls": len(calls), "dctx_calls": dctx_calls, "answer": answer.strip()[:2000], "workdir": str(work)}
+            "tool_calls": len(calls), "datawright_calls": datawright_calls, "answer": answer.strip()[:2000], "workdir": str(work)}
 
 
 def main():
@@ -112,7 +112,7 @@ def main():
     ap.add_argument("--reps", type=int, default=1)
     ap.add_argument("--suite", default="basic", choices=("basic", "hard"), help="hard: multi-hop chains, piecemeal codes, a stale trap column")
     ap.add_argument("--tasks", help="task numbers, e.g. 1,3 (default: all in the suite)")
-    ap.add_argument("--conditions", default="baseline,dctx")
+    ap.add_argument("--conditions", default="baseline,datawright")
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--noise", type=int, default=0, help="extra pipeline files, with decoys: a big repo")
     ap.add_argument("--no-data", action="store_true", help="agents can't query the warehouse: they work from the code")
@@ -129,7 +129,7 @@ def main():
             with out.open("a") as f:
                 f.write(json.dumps(r) + "\n")
             print(f"task {r['task']} {r['condition']:8} rep {r['rep']}: {'RIGHT' if r['correct'] else 'wrong'}  ${r['cost'] or 0:.2f}  "
-                  f"{r['turns']} turns  {r['seconds']}s  dctx calls {r['dctx_calls']}" + (f"  ({r['error']})" if r["error"] else ""), flush=True)
+                  f"{r['turns']} turns  {r['seconds']}s  datawright calls {r['datawright_calls']}" + (f"  ({r['error']})" if r["error"] else ""), flush=True)
     print(f"\n{'condition':10} {'right':>7} {'cost':>8} {'turns':>6} {'seconds':>8}")
     for c in a.conditions.split(","):
         rs = [r for r in results if r["condition"] == c]

@@ -1,9 +1,9 @@
-"""dctx connector: Metabase questions, models and dashboards, so they show up in `impact` and `review`.
+"""datawright connector: Metabase questions, models and dashboards, so they show up in `impact` and `review`.
 
 Reads .data-context/imports/metabase/metabase.json, written by `uv run <data-context skill>/assets/bi_export.py metabase`
 (read-only API calls). Questions become `metabase:question.<name>` (models `metabase:model.<name>`) reading the tables
 their query builder or SQL names, and the questions they build on; dashboards `metabase:dashboard.<name>` with a column
-per card, so `dctx impact mart.orders.revenue` reaches `metabase:dashboard.sales.<card>`.
+per card, so `datawright impact mart.orders.revenue` reaches `metabase:dashboard.sales.<card>`.
 ponytail: in SQL questions, any column of a table it reads that the SQL names counts as used (any clause).
 """
 import json

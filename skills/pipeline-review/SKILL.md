@@ -8,11 +8,11 @@ license: MIT
 
 Review the changed pipeline code (or the files the user names). Read each file fully first, and identify the orchestrator and engine from the code. Report only real problems, each with `file:line`, what goes wrong, and the fix.
 
-**Context first:** run `uv run .data-context/dctx.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `dctx set` or `dctx note`.
+**Context first:** run `uv run .data-context/datawright.py card <dataset>` for each dataset involved (set it up with the `data-context` skill if it's missing). Before finishing, record anything non-obvious you learned with `datawright set` or `datawright note`.
 
 ## Checklist
 
-Start with `uv run .data-context/dctx.py review` (or `lint`): its best-practice findings cover rerun safety, several writers, `SELECT *` writes, schedule order, layer order and committed secrets from the code as a whole. Use the list below for what needs judgment.
+Start with `uv run .data-context/datawright.py review` (or `lint`): its best-practice findings cover rerun safety, several writers, `SELECT *` writes, schedule order, layer order and committed secrets from the code as a whole. Use the list below for what needs judgment.
 
 **Reruns and backfills**
 - Each step is idempotent: rerunning the same time range replaces its output (overwrite a partition, `MERGE` / upsert, delete-then-insert in one transaction) instead of appending.

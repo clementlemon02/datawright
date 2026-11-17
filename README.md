@@ -13,7 +13,7 @@ Datawright reads your data team's code and gives your AI agent and your reviewer
 
 [Quick start](#quick-start) · [What you get](#what-you-get) · [Benchmarks](#how-well-does-it-work) · [FAQ](#faq) · [Reference](docs/reference.md) · [Roadmap](ROADMAP.md)
 
-<img src="docs/demo.svg" alt="dctx impact, join and card output on the shop example" width="860">
+<img src="docs/demo.svg" alt="datawright impact, join and card output on the shop example" width="860">
 
 </div>
 
@@ -24,16 +24,16 @@ Agents and reviewers guess. Datawright answers from your repo, with no warehouse
 | Without it | With it |
 |---|---|
 | "Which tables does this change break?" Nobody knows until a dashboard does. | A comment on every merge request: changed tables, the DAG tasks that run them, downstream tables and dashboards. |
-| The agent joins two tables on whatever column names match. | `dctx join a b` writes the join your code already uses, with casts. |
+| The agent joins two tables on whatever column names match. | `datawright join a b` writes the join your code already uses, with casts. |
 | What does `status = 2` mean? Ask someone who left. | The card says `2 = approved`, learned from your own `CASE` expressions. |
-| A rerun silently doubles yesterday's rows. | `dctx lint` flags appends with nothing clearing the slice first. |
+| A rerun silently doubles yesterday's rows. | `datawright lint` flags appends with nothing clearing the slice first. |
 
 ## What you get
 
-- **Impact on every merge request.** Run `dctx review` in CI or by hand. It lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
+- **Impact on every merge request.** Run `datawright review` in CI or by hand. It lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
 - **Column-level lineage and meaning.** Which columns feed which, how tables join, what codes mean, and which key columns no code uses any more.
 - **11 skills for your agent.** Set up, build, change, debug, test, review, optimize, on-call and ticket workflows, so it works like a senior data engineer.
-- **Open and small.** One Python file (`dctx`) and plain `SKILL.md` files. A CLI, or an MCP server for any MCP client.
+- **Open and small.** One Python file (`datawright`) and plain `SKILL.md` files. A CLI, or an MCP server for any MCP client.
 
 **Reads:** SQL · dbt · Airflow · Dagster · Spark · Flink · Kafka · Java (MyBatis) · Looker · Superset · Metabase · data contracts (ODCS). Anything else: a small connector.
 **Works with:** Claude Code · Codex · Cursor · Gemini CLI · any agent that reads [Agent Skills](https://agentskills.io).
@@ -55,14 +55,14 @@ Codex, Cursor, Gemini CLI and others (swap `-a`):
 npx skills add clementlemon02/datawright -a codex
 ```
 
-**2. Set up your repo.** In your data repo, tell your agent: **"set up this repo"**. It installs `dctx`, builds the index and writes an `AGENTS.md` with your real commands.
+**2. Set up your repo.** In your data repo, tell your agent: **"set up this repo"**. It installs `datawright`, builds the index and writes an `AGENTS.md` with your real commands.
 
 **3. Ask.**
 - *"What breaks if I change `orders_daily`?"*
 - *"How do `sessions` and `regions` join?"*
 - *"Review my changes before I open a PR."*
 
-No data repo handy? Try [examples/shop](examples/shop), a small warehouse with planted bugs. No agent? `uv run <path to>/skills/data-context/scripts/dctx.py init` builds the index alone.
+No data repo handy? Try [examples/shop](examples/shop), a small warehouse with planted bugs. No agent? `uv run <path to>/skills/data-context/scripts/datawright.py init` builds the index alone, then `.data-context/dw card <table>` (`dw` is the short command `init` writes).
 
 ## How well does it work?
 
@@ -85,15 +85,15 @@ Six public repos run in CI at pinned commits, so any change in what it finds is 
 | Built for an agent to query | Some, via MCP | Not their job | Yes: cards, `join`, MCP server |
 | Setup | A service to run | Part of the project | One file, no service |
 
-They coexist: Datawright imports from them and can [export to dbt, DataHub and OpenMetadata](docs/reference.md#everything-dctx-answers).
+They coexist: Datawright imports from them and can [export to dbt, DataHub and OpenMetadata](docs/reference.md#everything-datawright-answers).
 
 ## FAQ
 
-**Does it touch my warehouse or send data anywhere?** No. `dctx` reads code, makes no network calls and never writes. Optional read-only queries need a read-only user you set up.
+**Does it touch my warehouse or send data anywhere?** No. `datawright` reads code, makes no network calls and never writes. Optional read-only queries need a read-only user you set up.
 
 **Which warehouse and SQL dialects?** Anything sqlglot parses, auto-detected, including Snowflake, BigQuery, Trino, StarRocks, Doris, Spark and DuckDB.
 
-**What if it doesn't understand part of my repo?** `dctx coverage` lists what it skips. A connector, usually a few dozen lines, teaches it, and setup can write one for you.
+**What if it doesn't understand part of my repo?** `datawright coverage` lists what it skips. A connector, usually a few dozen lines, teaches it, and setup can write one for you.
 
 **Is it production-ready?** It's a first release, tested by its author on public repos and one production platform. [Ten minutes and five answers](docs/try-it.md) from you would help the most.
 

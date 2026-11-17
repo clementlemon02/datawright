@@ -15,8 +15,8 @@ data-impact:
     - pip install -q uv
   script:
     - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
-    - uv run --no-config .data-context/dctx.py build
-    - uv run --no-config .data-context/dctx.py review --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --strict | tee data-impact.md
+    - uv run --no-config .data-context/datawright.py build
+    - uv run --no-config .data-context/datawright.py review --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --strict | tee data-impact.md
   after_script:
     - |
       if [ -n "$DCTX_GITLAB_TOKEN" ] && [ -s data-impact.md ]; then

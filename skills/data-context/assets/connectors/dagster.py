@@ -1,9 +1,9 @@
-"""dctx connector: Dagster assets, their dependencies and the schedules that materialize them.
+"""datawright connector: Dagster assets, their dependencies and the schedules that materialize them.
 
 Reads @asset / @dg.asset functions (key from name, key or key_prefix), their upstream from deps=[...], ins={...: AssetIn(...)}
 and function parameters, AssetSpec(key, deps=...) declarations, and define_asset_job + ScheduleDefinition schedules.
 Asset keys become dataset names joined with dots (["ANALYTICS", "orders"] -> analytics.orders), which line up with
-warehouse tables named schema.table. dbt models under @dbt_assets need nothing extra: dctx reads their SQL. Static only:
+warehouse tables named schema.table. dbt models under @dbt_assets need nothing extra: datawright reads their SQL. Static only:
 assets built in loops or factories from runtime config are missed. Copy to .data-context/connectors/.
 """
 import ast

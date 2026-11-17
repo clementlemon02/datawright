@@ -1,6 +1,6 @@
-"""dctx connector: data contracts in the Open Data Contract Standard (ODCS v3, as written by datacontract-cli), plus the older
+"""datawright connector: data contracts in the Open Data Contract Standard (ODCS v3, as written by datacontract-cli), plus the older
 Data Contract Specification. Each contract's tables get the contracted columns, types and required flags, a description and an
-owner; `dctx review` then flags a change that stops producing a required column, and cards show the contract.
+owner; `datawright review` then flags a change that stops producing a required column, and cards show the contract.
 Copy to .data-context/connectors/ and adjust FILES to where your contracts live.
 """
 import re

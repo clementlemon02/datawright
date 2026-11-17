@@ -2,12 +2,12 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Table-lineage accuracy against dbt's own answer: precision and recall of dctx's edges between a dbt project's models,
-seeds, snapshots and sources, with the manifest hidden from dctx.
+"""Table-lineage accuracy against dbt's own answer: precision and recall of datawright's edges between a dbt project's models,
+seeds, snapshots and sources, with the manifest hidden from datawright.
 
 uv run run.py <dbt project dir> [--adapter duckdb] [--manifest target/manifest.json]
 Without --manifest it runs `dbt deps` and `dbt parse` (no warehouse needed) through uvx with dbt-<adapter>.
-dbt resolves every ref() and source() itself, so its parent map is independent of how dctx reads the SQL."""
+dbt resolves every ref() and source() itself, so its parent map is independent of how datawright reads the SQL."""
 import argparse
 import json
 import shutil
@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-DCTX = Path(__file__).parents[2] / "skills/data-context/scripts/dctx.py"
+DCTX = Path(__file__).parents[2] / "skills/data-context/scripts/datawright.py"
 
 
 def manifest_for(project, adapter):
@@ -50,13 +50,13 @@ def truth(manifest):
     return edges, set(name.values())
 
 
-def dctx_edges(project):
+def datawright_edges(project):
     work = Path(tempfile.mkdtemp()) / "p"
     shutil.copytree(project, work, ignore=shutil.ignore_patterns("target", ".data-context", ".git", "dbt_packages", "logs"))  # no manifest: SQL only
     subprocess.run(["git", "init", "-q"], cwd=work, check=True)
     (work / ".data-context").mkdir()
-    shutil.copy(DCTX, work / ".data-context/dctx.py")
-    r = subprocess.run(["uv", "run", "-q", ".data-context/dctx.py", "build"], cwd=work, capture_output=True, text=True)
+    shutil.copy(DCTX, work / ".data-context/datawright.py")
+    r = subprocess.run(["uv", "run", "-q", ".data-context/datawright.py", "build"], cwd=work, capture_output=True, text=True)
     if r.returncode:
         sys.exit(r.stderr[-800:])
     con = sqlite3.connect(work / ".data-context/index.db")
@@ -72,10 +72,10 @@ def main():
     project = Path(a.project).resolve()
     want, nodes = truth(a.manifest or manifest_for(project, a.adapter))
     short = lambda n: n if n in nodes else next((x for x in (".".join(n.split(".")[-k:]) for k in (2, 1)) if x in nodes), n)  # db.schema.model -> model
-    got = {(short(s), short(d)) for s, d in dctx_edges(project)}
+    got = {(short(s), short(d)) for s, d in datawright_edges(project)}
     got = {e for e in got if e[0] in nodes and e[1] in nodes}
     hit = got & want
-    print(f"{project.name}: {len(nodes)} nodes, {len(want)} true edges · dctx found {len(got)}: precision {len(hit) / max(len(got), 1):.1%}, recall {len(hit) / max(len(want), 1):.1%}")
+    print(f"{project.name}: {len(nodes)} nodes, {len(want)} true edges · datawright found {len(got)}: precision {len(hit) / max(len(got), 1):.1%}, recall {len(hit) / max(len(want), 1):.1%}")
     for label, es in (("missed", want - got), ("extra", got - want)):
         if es:
             print(f"  {label} ({len(es)}): " + ", ".join(f"{s} → {d}" for s, d in sorted(es)[:8]) + (" …" if len(es) > 8 else ""))

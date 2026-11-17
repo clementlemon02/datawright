@@ -2,13 +2,13 @@
 
 Optional. The repo scan already gives lineage for code in the repo. A warehouse export adds what the repo can't see: column types for every table, and lineage from jobs, BI tools and other teams' code that run against the warehouse.
 
-**Bulk metadata never passes through the model.** Run each query with the engine's CLI and redirect the output to a file in `.data-context/imports/`, then run `dctx build`. Never run these through an MCP tool: the results would flood the context window.
+**Bulk metadata never passes through the model.** Run each query with the engine's CLI and redirect the output to a file in `.data-context/imports/`, then run `datawright build`. Never run these through an MCP tool: the results would flood the context window.
 
 - Use the read-only, non-production connection. Credentials come from the CLI's own config or environment variables; never type secrets into a command.
 - `imports/` is gitignored: query text can contain real values. Delete the files after building if that matters.
-- `dctx build` auto-detects the SQL dialect; if query logs come from a different engine than the repo's SQL, set `dialect:` in `.data-context/config.yml`.
+- `datawright build` auto-detects the SQL dialect; if query logs come from a different engine than the repo's SQL, set `dialect:` in `.data-context/config.yml`.
 
-## Files `dctx build` reads
+## Files `datawright build` reads
 
 Header names are case-insensitive; `.csv` or `.tsv`. Any subset is fine.
 
@@ -72,7 +72,7 @@ CLI: `mysql --batch -e "<query>" > .data-context/imports/<file>.tsv` (tab-separa
 - columns: `select table_schema, table_name, column_name, data_type, column_comment as comment from information_schema.columns where table_schema not in ('information_schema', 'mysql', 'sys', 'performance_schema', '_statistics_')`
 
 ### Catalogs and OpenLineage
-If a lineage tool already tracks what the repo can't see (BI dashboards, other teams' jobs, ML features), save its export as `.json` or `.jsonl` in `.data-context/imports/`. `dctx build` recognises each format by its shape and reads table lineage, column lineage, column types and descriptions. Catalog names are matched to the repo's names, e.g. `warehouse.mart.orders` to `mart.orders`. Cards tag these edges with the tool they came from. Any other tool: export `edges.csv` as above.
+If a lineage tool already tracks what the repo can't see (BI dashboards, other teams' jobs, ML features), save its export as `.json` or `.jsonl` in `.data-context/imports/`. `datawright build` recognises each format by its shape and reads table lineage, column lineage, column types and descriptions. Catalog names are matched to the repo's names, e.g. `warehouse.mart.orders` to `mart.orders`. Cards tag these edges with the tool they came from. Any other tool: export `edges.csv` as above.
 
 - **OpenLineage** (Airflow's OpenLineage provider, Spark, dbt, Marquez): raw run events, one JSON object per line. The simplest source is the client's file transport, for example in Airflow's config `[openlineage] transport = {"type": "file", "log_file_path": "/path/openlineage.jsonl", "append": true}`; copy the file into `imports/`. If you run Marquez, export its stored events instead (check your version's API reference for the events endpoint).
 - **DataHub**: `upstreamLineage` and `schemaMetadata` aspects as metadata change proposals. Run an ingestion recipe with a `file` sink (`sink: {type: file, config: {filename: .data-context/imports/datahub.json}}`) for the sources you care about.

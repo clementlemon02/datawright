@@ -10,7 +10,7 @@ Goal: the change lands and nothing downstream breaks, including the things that 
 
 ## 1. Map the impact
 
-1. `uv run .data-context/dctx.py impact <dataset>.<column>` (or `<dataset>` for a table change). It lists writers, the code that reads it in any clause with the Airflow task that runs it, `select *` readers, downstream tables and columns (including catalogs' lineage), the owner and notes. If `.data-context/` is missing, set it up with the `data-context` skill.
+1. `uv run .data-context/datawright.py impact <dataset>.<column>` (or `<dataset>` for a table change). It lists writers, the code that reads it in any clause with the Airflow task that runs it, `select *` readers, downstream tables and columns (including catalogs' lineage), the owner and notes. If `.data-context/` is missing, set it up with the `data-context` skill.
 2. Open each location it lists. If the change carries downstream (a renamed column copied into another table), run `impact` on that column too.
 3. Check what the repo can't see: the warehouse query log over a full business cycle (at least 30 days, to catch month-end jobs; per-engine tables in the `data-context` skill's `references/warehouse-export.md`), BI tools, and the owner. If you can't check one of these, say so in the plan as an open risk.
 
@@ -37,13 +37,13 @@ Each step must be deployable on its own, with scheduled runs succeeding between 
 
 ## 4. Verify
 
-- Run the affected jobs on dev (the tasks `impact` named) and compare before and after: row counts and key aggregates match except for the intended change. `dctx review --diff` does the comparison for every changed table (with `dev_name` set in `.data-context/config.yml`): rows, added and removed columns, duplicate keys and the sums that moved.
+- Run the affected jobs on dev (the tasks `impact` named) and compare before and after: row counts and key aggregates match except for the intended change. `datawright review --diff` does the comparison for every changed table (with `dev_name` set in `.data-context/config.yml`): rows, added and removed columns, duplicate keys and the sums that moved.
 - Add a test for the new column or constraint with `data-tests`.
-- Run `dctx build` and `impact` again. Before any drop, the old column or table must have no readers left.
+- Run `datawright build` and `impact` again. Before any drop, the old column or table must have no readers left.
 - Review with `pipeline-review` and `sql-review`.
 
 ## 5. Hand over
 
 - The plan as numbered deploys: what each changes, what to check after it, how to roll it back.
 - Who to tell: owners of downstream tables and consumers outside the repo.
-- `dctx note <dataset> "<what is changing and when>" --kind decision --column <column>`, so agents stop building on a column that's going away.
+- `datawright note <dataset> "<what is changing and when>" --kind decision --column <column>`, so agents stop building on a column that's going away.

@@ -8,7 +8,7 @@ MCP servers for popular data tools, checked against vendor docs, READMEs and pac
 - **Turn on the read-only setting** listed below. Where there is none, block the listed write tools in the agent's config.
 - **Connect only what the task needs.** Agents with many overlapping tools pick the wrong one more often.
 - **Remote servers** (HTTP + OAuth) need an agent that supports remote MCP, or a bridge such as `mcp-remote`.
-- **A CLI works too.** If the tool's CLI is installed and logged in with a read-only user (`bq`, `snow`, `databricks`, `psql`, `duckdb`, `trino`, `dbt`, `af`, `dg`, `prefect`, …), the agent can use it directly, often with fewer tokens than an MCP server. The read-only user is then the only guard, so it must exist. Set that CLI as `query_command` in `.data-context/config.yml` to add `dctx query`, which runs only single SELECTs with a row cap (also an MCP tool via `dctx serve`).
+- **A CLI works too.** If the tool's CLI is installed and logged in with a read-only user (`bq`, `snow`, `databricks`, `psql`, `duckdb`, `trino`, `dbt`, `af`, `dg`, `prefect`, …), the agent can use it directly, often with fewer tokens than an MCP server. The read-only user is then the only guard, so it must exist. Set that CLI as `query_command` in `.data-context/config.yml` to add `datawright query`, which runs only single SELECTs with a row cap (also an MCP tool via `datawright serve`).
 
 ## Warehouses and query engines
 
@@ -51,7 +51,7 @@ MCP servers for popular data tools, checked against vendor docs, READMEs and pac
 
 ## Catalog and observability
 
-An MCP server here answers live questions one table at a time. To put a catalog's or OpenLineage's lineage on every `dctx` card, export it in bulk instead (see `data-context` skill, references/warehouse-export.md): it costs no tokens per question.
+An MCP server here answers live questions one table at a time. To put a catalog's or OpenLineage's lineage on every `datawright` card, export it in bulk instead (see `data-context` skill, references/warehouse-export.md): it costs no tokens per question.
 
 | Tool | Server (publisher) | Run | Auth | Read-only |
 |---|---|---|---|---|

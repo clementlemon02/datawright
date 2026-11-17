@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["sqlglot>=30", "pyyaml>=6", "duckdb>=1.1"]
 # ///
-"""Self-check for examples/shop: it builds, dctx indexes all of it, and the planted bugs are there. Run: uv run tests/test_demo.py
+"""Self-check for examples/shop: it builds, datawright indexes all of it, and the planted bugs are there. Run: uv run tests/test_demo.py
 
 Answer key (keep it out of the demo, where agents would read it): mart.revenue_daily overstates revenue because
 1. it joins staging.payments, and every tenth order is paid in two installments, so those orders count twice;
@@ -25,19 +25,19 @@ def main():
     sh("git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
     sh(sys.executable, "run.py")
     (demo / ".data-context").mkdir()
-    shutil.copy(ROOT / "skills/data-context/scripts/dctx.py", demo / ".data-context")
+    shutil.copy(ROOT / "skills/data-context/scripts/datawright.py", demo / ".data-context")
     (demo / ".data-context/config.yml").write_text(f"dialect: duckdb\nquery_command: {sys.executable} sql.py {{sql}}\n")
-    dctx = lambda *a: sh(sys.executable, ".data-context/dctx.py", *a)
+    datawright = lambda *a: sh(sys.executable, ".data-context/datawright.py", *a)
 
-    built = dctx("build")
+    built = datawright("build")
     print(built)
     assert "unparsed" not in built, built
-    card = dctx("card", "revenue_daily")
+    card = datawright("card", "revenue_daily")
     for text in ("produced by models/marts/revenue_daily.sql:2", "staging.orders", "staging.payments",
                  "reports/weekly_kpis.py", "dags/shop_daily.py", "revenue ← staging.orders.amount"):
         assert text in card, f"card is missing {text!r}:\n{card}"
-    assert "raw.refunds" in dctx("lineage", "raw.refunds", "--down", "9") and "mart.customer_ltv" in dctx("lineage", "raw.refunds", "--down", "9")
-    assert dctx("query", "select count(*) as days from mart.revenue_daily").split() == ["days", "31"]
+    assert "raw.refunds" in datawright("lineage", "raw.refunds", "--down", "9") and "mart.customer_ltv" in datawright("lineage", "raw.refunds", "--down", "9")
+    assert datawright("query", "select count(*) as days from mart.revenue_daily").split() == ["days", "31"]
 
     # lineage accuracy against a hand-checked answer key: every table and column edge into the staging and mart models
     T = {("raw.orders", "staging.orders"), ("raw.payments", "staging.payments"), ("raw.refunds", "staging.refunds"), ("raw.customers", "mart.customer_ltv"),
@@ -66,14 +66,14 @@ def main():
     print(f"mart {mart} = gross {gross} + double-counted {doubled}; true net is {gross - refunds} ({mart / (gross - refunds) - 1:.0%} over)")
 
     # monitoring: the data ends in October, so the daily mart is stale; a planted drop in one day's orders shows as LOW
-    check = lambda *a: subprocess.run([sys.executable, ".data-context/dctx.py", "check", *a], cwd=demo, capture_output=True, text=True)
+    check = lambda *a: subprocess.run([sys.executable, ".data-context/datawright.py", "check", *a], cwd=demo, capture_output=True, text=True)
     con.close()
-    dctx("set", "staging.orders", "freshness=ordered_at 3650d")
+    datawright("set", "staging.orders", "freshness=ordered_at 3650d")
     plan = check("--all", "--plan")
     assert plan.returncode == 0 and "PLAN   mart.revenue_daily  order_date (guessed), alert after 48.5 h (from the schedule)" in plan.stdout, plan.stdout
     out = check("--all")
     assert out.returncode == 1 and "STALE  mart.revenue_daily" in out.stdout and "alert after 48.5 h" in out.stdout, out.stdout + out.stderr
-    dctx("set", "mart.revenue_daily", "tier=0")  # critical: late by one run is already an incident
+    datawright("set", "mart.revenue_daily", "tier=0")  # critical: late by one run is already an incident
     assert "PLAN   mart.revenue_daily  order_date (guessed), alert after 24.2 h" in check("mart.revenue_daily", "--plan").stdout
     assert "OK     staging.orders" in out.stdout and "SKIP   mart.customer_ltv" in out.stdout, out.stdout
     with duckdb.connect(str(demo / "shop.duckdb")) as w:  # lose most of the last day's orders, as a broken load would
@@ -82,7 +82,7 @@ def main():
     assert out.returncode == 1 and out.stdout.startswith("LOW    staging.orders"), out.stdout + out.stderr
     print(out.stdout)
 
-    plan = dctx("backfill", "staging.orders", "--from", "2026-10-28", "--to", "2026-10-31")
+    plan = datawright("backfill", "staging.orders", "--from", "2026-10-28", "--to", "2026-10-31")
     assert "airflow tasks clear shop_daily -t '^stg_orders$' -s 2026-10-28 -e 2026-10-31 -y" in plan, plan
     assert "wave 2 (after the wave before has finished)" in plan and "airflow tasks clear shop_daily -t '^(customer_ltv|revenue_daily)$'" in plan, plan
 
@@ -92,9 +92,9 @@ def main():
                                                "where o.order_id in (select order_id from staging.payments)").replace("count(*) as orders", "count(*) as orders,\n       0 as refunds"))
     with duckdb.connect(str(demo / "shop.duckdb")) as w:
         w.execute("create schema mart_dev; " + model.read_text().replace("mart.revenue_daily", "mart_dev.revenue_daily"))
-    dctx("build")
-    dctx("set", "mart.revenue_daily", "key=order_date")
-    review = lambda *a: subprocess.run([sys.executable, ".data-context/dctx.py", "review", "--base", "HEAD", *a], cwd=demo, capture_output=True, text=True)
+    datawright("build")
+    datawright("set", "mart.revenue_daily", "key=order_date")
+    review = lambda *a: subprocess.run([sys.executable, ".data-context/datawright.py", "review", "--base", "HEAD", *a], cwd=demo, capture_output=True, text=True)
     assert "set `dev_name`" in review("--diff").stdout
     (demo / ".data-context/config.yml").write_text((demo / ".data-context/config.yml").read_text() + "dev_name: {schema}_dev.{table}\n")
     out = review("--diff").stdout

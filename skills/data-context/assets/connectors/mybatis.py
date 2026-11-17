@@ -1,4 +1,4 @@
-"""dctx connector: MyBatis mapper XML, the SQL behind Java services (<select>, <insert>, <update>, <delete>).
+"""datawright connector: MyBatis mapper XML, the SQL behind Java services (<select>, <insert>, <update>, <delete>).
 
 Dynamic SQL is rendered to plain SQL: every <if> is included, <where>/<set>/<trim> add their keyword and drop the leading
 AND/OR or trailing comma, <foreach> keeps one item, <include> pulls in its <sql> fragment, #{param} becomes a value and

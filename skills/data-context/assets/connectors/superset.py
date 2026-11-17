@@ -1,10 +1,10 @@
-"""dctx connector: Apache Superset (and Preset) dashboards, so they show up in `impact` and `review`.
+"""datawright connector: Apache Superset (and Preset) dashboards, so they show up in `impact` and `review`.
 
 Reads Superset's export format: the ZIP from Dashboards > Export (or `superset export-dashboards`, or the REST API)
-dropped into .data-context/imports/, which dctx unpacks; or the YAML files kept in git by `preset-cli superset sync`.
+dropped into .data-context/imports/, which datawright unpacks; or the YAML files kept in git by `preset-cli superset sync`.
 Datasets become `superset:dataset.<table>`, read from their table or, for virtual datasets, from the tables their SQL
 reads; charts `superset:chart.<name>` with the columns and metrics they use; dashboards `superset:dashboard.<name>`
-with a column per chart. So `dctx impact mart.orders.revenue` reaches `superset:dashboard.sales.revenue_by_day`.
+with a column per chart. So `datawright impact mart.orders.revenue` reaches `superset:dashboard.sales.revenue_by_day`.
 """
 import json
 import re

@@ -1,4 +1,4 @@
-"""dctx connector: lineage written by hand in YAML or JSON, the files teams keep for OpenMetadata, DataHub or their own docs.
+"""datawright connector: lineage written by hand in YAML or JSON, the files teams keep for OpenMetadata, DataHub or their own docs.
 
 Finds every list of edges, at any depth, written as from/to, source/target or upstream/downstream. Each side is a name
 or an object with fqn, name or id (and optionally type, which becomes the dataset kind). Example:
@@ -14,7 +14,7 @@ import re
 
 FILES = r"lineage|\.lineage\.|edges"   # which .yaml/.yml/.json paths hold lineage (a regex on the path)
 DROP_PARTS = 0                          # leading name parts to drop, e.g. 1 for OpenMetadata's service prefix
-TYPE_PREFIX = {"topic": "kafka:"}       # name prefixes by type, so these line up with what dctx finds in code
+TYPE_PREFIX = {"topic": "kafka:"}       # name prefixes by type, so these line up with what datawright finds in code
 RENAME = []                             # (regex, replacement) pairs for your naming, e.g. [(r"\$\{env\}_?", "")]
 PAIRS = (("from", "to"), ("source", "target"), ("upstream", "downstream"))
 
