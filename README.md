@@ -13,6 +13,8 @@
 
 [Quick start](#quick-start) · [What you get](#what-you-get) · [Benchmarks](#how-well-does-it-work) · [FAQ](#faq) · [Reference](docs/reference.md) · [Roadmap](ROADMAP.md)
 
+<img src="docs/demo.gif" alt="dw review on a branch that renames a status value: changed table, downstream marts, readers" width="860">
+
 <img src="docs/demo.svg" alt="datawright impact, join and card output on the shop example" width="860">
 
 </div>
