@@ -4,7 +4,7 @@
 
 ### Know what breaks before you merge.
 
-Datawright reads your data team's code and gives your AI agent and your reviewers<br>the lineage, join paths and column meanings they can't see.
+`datawright` is a local command that reads your data repo's code and tells you, and your AI agent,<br>the lineage, join paths and column meanings. No warehouse access, no model tokens, one file.
 
 [![CI](https://github.com/clementlemon02/datawright/actions/workflows/ci.yml/badge.svg)](https://github.com/clementlemon02/datawright/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -30,21 +30,30 @@ Agents and reviewers guess. Datawright answers from your repo, with no warehouse
 
 ## What you get
 
-- **Impact on every merge request.** Run `datawright review` in CI or by hand. It lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
-- **Column-level lineage and meaning.** Which columns feed which, how tables join, what codes mean, and which key columns no code uses any more.
-- **11 skills for your agent.** Set up, build, change, debug, test, review, optimize, on-call and ticket workflows, so it works like a senior data engineer.
-- **Open and small.** One Python file (`datawright`) and plain `SKILL.md` files. A CLI, or an MCP server for any MCP client.
+- **Impact on every merge request.** `datawright review` lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
+- **Lineage down to the column.** Which columns feed which, Every table card names the file and line that writes and reads it.
+- **Join paths and meanings.** How tables join as your code joins them, what codes like `status = 2` mean, which key columns nothing uses any more.
+- **Any agent can use it.** A command line, plus an MCP server (`datawright serve`) for clients with no shell.
+- **11 agent skills on top** (set up, build, change, debug, test, review, optimize, on-call, tickets) that teach your agent to use it like a senior data engineer.
 
 **Reads:** SQL · dbt · Airflow · Dagster · Spark · Flink · Kafka · Java (MyBatis) · Looker · Superset · Metabase · data contracts (ODCS). Anything else: a small connector.
-**Works with:** Claude Code · Codex · Cursor · Gemini CLI · any agent that reads [Agent Skills](https://agentskills.io).
+**Agents:** Claude Code · Codex · Cursor · Gemini CLI · anything that reads [Agent Skills](https://agentskills.io).
 
 ## Quick start
 
 You need [uv](https://docs.astral.sh/uv/) and git.
 
-**1. Install the skills**
+**1. Try the tool.** One minute, no agent needed. From your data repo's root:
 
-Claude Code:
+```bash
+uv run https://raw.githubusercontent.com/clementlemon02/datawright/main/skills/data-context/scripts/datawright.py init
+.data-context/dw card <a table you know>
+.data-context/dw impact <that table>
+```
+
+On a feature branch, `.data-context/dw review --base main` prints the merge-request report. `.data-context/dw coverage` lists what it doesn't read in your repo yet.
+
+**2. Give your agent the skills.** Claude Code:
 ```
 /plugin marketplace add clementlemon02/datawright
 /plugin install data-eng@datawright
@@ -55,14 +64,9 @@ Codex, Cursor, Gemini CLI and others (swap `-a`):
 npx skills add clementlemon02/datawright -a codex
 ```
 
-**2. Set up your repo.** In your data repo, tell your agent: **"set up this repo"**. It installs `datawright`, builds the index and writes an `AGENTS.md` with your real commands.
+Then tell your agent **"set up this repo"** and ask: *"What breaks if I change `orders_daily`?"*, *"How do `sessions` and `regions` join?"*, *"Review my changes before I open a PR."*
 
-**3. Ask.**
-- *"What breaks if I change `orders_daily`?"*
-- *"How do `sessions` and `regions` join?"*
-- *"Review my changes before I open a PR."*
-
-No data repo handy? Try [examples/shop](examples/shop), a small warehouse with planted bugs. No agent? `uv run <path to>/skills/data-context/scripts/datawright.py init` builds the index alone, then `.data-context/dw card <table>` (`dw` is the short command `init` writes).
+No data repo handy? Try [examples/shop](examples/shop), a small warehouse with planted bugs.
 
 ## How well does it work?
 
@@ -77,15 +81,16 @@ Six public repos run in CI at pinned commits, so any change in what it finds is 
 
 ## How is it different?
 
-| | Data catalogs (DataHub, OpenMetadata) | dbt, SQLMesh | **Datawright** |
+| | Data catalogs (DataHub, OpenMetadata) | dbt-centric review (Datafold, Recce, SQLMesh) | **Datawright** |
 |---|---|---|---|
-| Source of truth | Metadata ingested from your tools | Your dbt models | Your repo's code, read directly |
+| Where it looks | Metadata ingested from your tools | Your dbt project and warehouse | Your repo's code, read directly |
 | Beyond dbt (Airflow, Spark, Java, Kafka) | Through ingestion connectors | No | Yes |
-| Impact comment on every merge request | Not their job | Within dbt | Yes |
-| Built for an agent to query | Some, via MCP | Not their job | Yes: cards, `join`, MCP server |
-| Setup | A service to run | Part of the project | One file, no service |
+| Comparing the actual data before and after | No | **Yes, row and value diffs** | Aggregates only |
+| Impact comment on every merge request | Not their job | Yes | Yes |
+| Built for an agent to query | Some, via MCP | Some | Yes: cards, `join`, MCP server |
+| Setup | A service to run | A warehouse connection, often a paid plan | One file, no service, no credentials |
 
-They coexist: Datawright imports from them and can [export to dbt, DataHub and OpenMetadata](docs/reference.md#everything-datawright-answers).
+They coexist: Datawright imports from them and can [export to dbt, DataHub and OpenMetadata](docs/reference.md#everything-datawright-answers). If you only run dbt, you may already have most of the lineage; the merge-request report and join paths are what's new.
 
 ## FAQ
 
@@ -94,6 +99,8 @@ They coexist: Datawright imports from them and can [export to dbt, DataHub and O
 **Which warehouse and SQL dialects?** Anything sqlglot parses, auto-detected, including Snowflake, BigQuery, Trino, StarRocks, Doris, Spark and DuckDB.
 
 **What if it doesn't understand part of my repo?** `datawright coverage` lists what it skips. A connector, usually a few dozen lines, teaches it, and setup can write one for you.
+
+**How do I know it's right?** Every answer points at the file and line it came from, `datawright coverage` lists what it can't read, and lineage is scored against dbt's own manifest in CI. It's a heuristic parser, so check surprising results and [report wrong lineage](docs/try-it.md).
 
 **Is it production-ready?** It's a first release, tested by its author on public repos and one production platform. [Ten minutes and five answers](docs/try-it.md) from you would help the most.
 
