@@ -14,11 +14,11 @@ Table lineage between a dbt project's models, seeds and sources, datawright read
 |---|---|---|---|---|
 | shop demo (hand-checked, table and column edges) | 8 + 21 | 100% | 100% | |
 | dbt-labs/jaffle-shop | 17 | 100% | 100% | |
-| datacoves/balboa | 39 | 100% | 97.4% | One versioned model (`_v1`, `_v2` files of one model) |
-| cal-itp/data-infra (865 nodes) | 1,198 | 100% | 95.7% | Sources named inside a Jinja loop: only running Jinja resolves them |
+| datacoves/balboa | 39 | 100% | 100% | |
+| cal-itp/data-infra (865 nodes) | 1,198 | 100% | 99.5% | Six links: a source named through a loop pattern that isn't a literal list |
 
-The first measurement on cal-itp was 78.3% recall. Two fixes took it to 95.7%: `ref()` and `source()` passed as a macro's argument, and refs inside the macros a model calls. No edge datawright reports was wrong in any project. When a project has a manifest (`dbt parse`), datawright reads it and the loop-built sources come with it.
+The first measurement on cal-itp was 78.3% recall. Four fixes took it to 99.5%: `ref()` and `source()` passed as a macro's argument, refs inside the macros a model calls, `{% for %}` loops over a literal list or a `{% set %}` list (read once per value, marked inferred), and versioned models (`_v1`, `_v2` files read as one model). No edge datawright reports was wrong in any project. When a project has a manifest (`dbt parse`), datawright reads it and the loop-built sources come with it.
 
-Each link also carries how sure datawright is: `direct` (written plainly), `declared` (a connector or import) or `inferred` (a filled-in name, a bound argument, a pattern). The runner prints how often each kind is right: on balboa and cal-itp, 100% of 1,133 direct links and 100% of 51 inferred ones. So on dbt projects the label marks where an error could come from, not errors found; the real test is repos with no answer key.
+Each link also carries how sure datawright is: `direct` (written plainly), `declared` (a connector or import) or `inferred` (a filled-in name, a bound argument, a pattern). The runner prints how often each kind is right: on balboa and cal-itp, 100% of 1,134 direct links and 100% of 97 inferred ones. So on dbt projects the label marks where an error could come from, not errors found; the real test is repos with no answer key.
 
 Not yet measured: column lineage on a real project (dbt has no column-level answer key), and non-dbt SQL repos.

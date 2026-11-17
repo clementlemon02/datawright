@@ -12,6 +12,11 @@ spec.loader.exec_module(datawright)
 
 FILES = {
     "dbt_project.yml": "name: shop\n",
+    "models/versioned/pop.yml": "models:\n  - name: pop\n    latest_version: 2\n    versions:\n      - v: 1\n      - v: 2\n",
+    "models/versioned/pop_v1.sql": "select * from {{ source('geo', 'pop_raw') }}\n",
+    "models/versioned/pop_v2.sql": "select * from {{ source('geo', 'pop_raw') }}\n",
+    "models/versioned/pop_report.sql": "select * from {{ ref('pop') }}\n",
+    "models/looped/all_files.sql": "{% set files = ['agency', 'routes'] %}\n{% for f in files %}\nselect * from {{ source('feeds', f) }}\n{% if not loop.last %}union all{% endif %}\n{% endfor %}\n",
     "models/customers.sql": "select c.id, count(o.id) as orders\nfrom {{ ref('stg_customers') }} c\n"
                             "left join {{ ref('shop', 'stg_orders') }} o on o.customer_id = c.id\ngroup by 1\n",
     "macros/union_all.sql": "{% macro union_all(rels) %}\nselect * from mart.never_a_table\n{% endmacro %}\n",
@@ -252,6 +257,8 @@ def main():
     assert how[("staging.orders", "mart.revenue_daily")] == "direct", "plain SQL in a .sql file is read directly"
     assert how[("raw.events", "staging.events_stage")] == "inferred" and how[("raw.x", "dw.x")] == "inferred", "names filled into a Python string are inferred"
     assert how[("src.jdbc_table", "dw.jdbc_out")] == "inferred", "Spark DataFrame lineage is a pattern, so inferred"
+    assert ("geo.pop_raw", "pop") in how and ("pop", "pop_report") in how and not any("pop_v" in x for e in how for x in e), "versioned model files are one model"
+    assert how[("feeds.agency", "all_files")] == "inferred" and ("feeds.routes", "all_files") in how, "a loop over a literal list reads each value"
     assert "declared" in set(how.values()), "connector and import edges are declared"
     for e in [("staging.orders", "mart.revenue_daily"), ("staging.payments", "mart.revenue_daily"),
               ("raw.orders", "staging.orders"), ("stg_customers", "customers"), ("stg_orders", "customers"),

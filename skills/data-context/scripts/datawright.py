@@ -1738,6 +1738,15 @@ def build(dialect=None):
     files = repo_files(cfg.get("exclude") or [], repos) + export_files()
     projects = [str(Path(f).parent) for f in files if Path(f).name == "dbt_project.yml"]
     macros = dbt_macros(files, projects)
+    versioned = set()  # dbt models that declare `versions:`: orders_v1.sql and orders_v2.sql are both the model `orders`
+    for f in files:
+        if f.endswith((".yml", ".yaml")) and any(Path(p) in Path(f).parents for p in projects):
+            try:
+                body = (ROOT / f).read_text(encoding="utf-8", errors="replace")
+                if "versions:" in body:
+                    versioned |= {str(m["name"]).lower() for m in (yaml.safe_load(body) or {}).get("models") or [] if isinstance(m, dict) and m.get("versions")}
+            except Exception:
+                pass
     ix, stmts, file_set = Index(), [], set(files)
     shared, exprs = {}, {}  # JVM constants by name, when unique across files: jobs read topics from a Config class
     for f in (f for f in files if f.endswith((".java", ".scala", ".kt"))):
@@ -1803,9 +1812,25 @@ def build(dialect=None):
                             if src != model:
                                 ix.dataset(src)
                                 ix.edge(src, model, at(m), "inferred")
+            if in_dbt:  # a loop over a literal list: {% for t in ["a", "b"] %} ... source('s', t) ... {% endfor %}, read once per value
+                lists = {m[1]: re.findall(r"""['"]([^'"]+)['"]""", m[2]) for m in re.finditer(r"\{%-?\s*set\s+(\w+)\s*=\s*\[(.*?)\]\s*-?%\}", live, re.S)}
+                for loop in re.finditer(r"\{%-?\s*for\s+(\w+)\s+in\s+(?:\[(.*?)\]|(\w+))\s*-?%\}(.*?)\{%-?\s*endfor\s*-?%\}", live, re.S):
+                    values = re.findall(r"""['"]([^'"]+)['"]""", loop[2]) if loop[2] is not None else lists.get(loop[3], [])
+                    where = f"{f}:{text.count(chr(10), 0, loop.start()) + 1}"
+                    for v in values[:500]:
+                        body = re.sub(rf"\b{loop[1]}\b", f"'{v}'", loop[4])
+                        for m in DBT_REF.finditer(body):
+                            if m[1].lower() != model:
+                                ix.edge(m[1].lower(), model, where, "inferred")
+                        for m in DBT_SOURCE.finditer(body):
+                            ix.dataset(f"{m[1]}.{m[2]}".lower())
+                            ix.edge(f"{m[1]}.{m[2]}".lower(), model, where, "inferred")
             stmts += extract_sql(text, f, dbt_model=Path(f).stem.lower() if in_dbt else None)
             if in_dbt:
                 dbt_layout(ix, text, Path(f).stem.lower(), f)
+    for base in versioned:
+        for name in [n for n in ix.ds if re.fullmatch(rf"{re.escape(base)}_v\d+", n)]:
+            ix.aliases[name] = base
     seen = {(s[0], s[1], s[2]) for s in stmts}
     for f, args, at in sorted(set(ix.calls), key=repr):  # each task's arguments read into the script: one lineage per call
         text = (ROOT / f).read_text(encoding="utf-8", errors="replace")

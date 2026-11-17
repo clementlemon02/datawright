@@ -72,7 +72,7 @@ No data repo handy? Try [examples/shop](examples/shop), a small warehouse with p
 
 | Test | Result |
 |---|---|
-| Table lineage vs dbt's own manifest, three public dbt projects | **100% precision, 96–100% recall** |
+| Table lineage vs dbt's own manifest, three public dbt projects | **100% precision, 99.5–100% recall** |
 | Questions agents answered correctly on a hard synthetic warehouse (Sonnet) | **12 of 12 with Datawright, 7 of 12 without** |
 | Same test, Haiku | 7–8 of 12 with it, 3 of 12 without |
 | Index build, 220-file production Airflow repo | under 2 seconds |
