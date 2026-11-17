@@ -16,6 +16,7 @@ jobs:
         run: |
           git config --global user.email ci@example.com && git config --global user.name ci
           for t in tests/test_dctx.py tests/test_demo.py tests/test_streaming.py tests/test_bi_export.py; do uv run -q "$t"; done
+          uv run -q --python 3.10 tests/test_dctx.py  # the oldest Python dctx promises
 
   corpus:
     runs-on: ubuntu-latest

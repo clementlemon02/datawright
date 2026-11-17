@@ -33,6 +33,8 @@ On a synthetic benchmark built to be hard (join chains across files, codes expla
 
 **1. Install**
 
+You need [uv](https://docs.astral.sh/uv/) (or Python 3.10+ with `sqlglot` and `pyyaml`) for `dctx`, and git.
+
 Claude Code:
 ```
 /plugin marketplace add clementlemon02/aiworkflow

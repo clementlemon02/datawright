@@ -2485,7 +2485,8 @@ def join_path(con, a, b):
             else:
                 right = f"cast({right} as {ty.lower()})"
             note = f"; {x}.{mine} is {tx}, {y}.{theirs} is {ty}"
-        print(f"join {y} t{i} on {left} = {right}  -- {f"written in {used} quer{'y' if used == 1 else 'ies'}" if used else why}{note}")
+        how = f"written in {used} quer{'y' if used == 1 else 'ies'}" if used else why  # not nested in the f-string: Python 3.10 and 3.11
+        print(f"join {y} t{i} on {left} = {right}  -- {how}{note}")
     return a, set()
 
 
