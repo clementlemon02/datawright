@@ -4,7 +4,7 @@ We've tested the kit on public repos and one production platform, all by its aut
 
 ## Try it
 
-1. Install the skills (see the [README](../README.md#quick-start)).
+1. Install the skills (see the [README](../README.md#install)).
 2. In a data repo, ask your agent: **"Set up this repo for data engineering work. Then tell me what `<a table you know well>` is and what breaks if I change `<one of its columns>`."**
 3. Check the answer against what you know.
 
