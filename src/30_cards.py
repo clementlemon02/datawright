@@ -202,7 +202,7 @@ def code(con, arg, limit=80):
     return name, set()  # a file read, not a saving
 
 
-def lineage_cmd(con, arg, up, down, limit):
+def lineage_cmd(con, arg, up, down, limit, fmt="text"):
     name = resolve(con, arg, quiet=True)
     columns = name is None  # not a dataset, so treat it as dataset.column
     if not columns:
@@ -221,6 +221,11 @@ def lineage_cmd(con, arg, up, down, limit):
         r = con.execute("select file from datasets where name=?", (m.rsplit(".", 1)[0] if columns else m,)).fetchone()
         return r[0] if r else None
     out, files = [name], {producer(name)}
+    if fmt == "mermaid":  # a graph to paste into a merge request or README: dashed arrows are inferred links
+        nodes, edges = walk_edges(con, name, up, down, table=not columns)
+        files.update(producer(n) for n in nodes)
+        print("\n".join(mermaid_graph(nodes, edges, [name])))
+        return name, files - {None}
 
     def walk(n, nbrs, arrow, depth, seen, lvl=1):
         for m in nbrs(n):

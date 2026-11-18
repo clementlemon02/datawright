@@ -348,6 +348,34 @@ def reach(start, nbrs, depth):
     return seen
 
 
+def mermaid_graph(nodes, edges, changed=()):
+    """A Mermaid flowchart (GitHub draws it in comments and READMEs) of `nodes` and the (src, dst, how) `edges` among them:
+    inferred links are dashed, the nodes in `changed` are highlighted."""
+    ids = {n: f"n{i}" for i, n in enumerate(nodes)}
+    out = ["```mermaid", "flowchart LR"] + [f'  {ids[n]}["{n.replace(chr(34), chr(39))}"]' for n in nodes]
+    out += [f"  {ids[s]} {'-.->' if how == 'inferred' else '-->'} {ids[d]}" for s, d, how in edges if s in ids and d in ids]
+    chg = [ids[n] for n in nodes if n in set(changed)]
+    if chg:
+        out += ["  classDef changed fill:#fff3cd,stroke:#d97706,stroke-width:2px", f"  class {','.join(chg)} changed"]
+    return out + ["```"]
+
+
+def walk_edges(con, name, up, down, table=True, cap=40):
+    """(nodes, edges) within `up` hops upstream and `down` hops downstream of `name`, `name` first; at most `cap` nodes."""
+    sql = "select src, dst, how from edges" if table else "select src, dst, 'direct' from col_edges"
+    rows = [tuple(r) for r in con.execute(sql)]
+    nodes, edges = [name], set()
+    for depth, side in ((up, 1), (down, 0)):
+        frontier = {name}
+        for _ in range(depth):
+            hit = [r for r in rows if r[side] in frontier]
+            edges.update(hit)
+            frontier = {r[1 - side] for r in hit} - set(nodes)
+            nodes += [n for n in sorted(frontier) if len(nodes) < cap]
+            frontier &= set(nodes)
+    return nodes, sorted(e for e in edges if e[0] in nodes and e[1] in nodes)
+
+
 def weak_links(con, roots, down):
     """(nodes in `down` that are reached only through inferred links, [(src, dst, via)] of the inferred links among them)."""
     inside = set(roots) | set(down)

@@ -318,6 +318,8 @@ def main():
     assert "mart.revenue_daily" in cli("lineage", "raw.orders", "--down", "9", "--up", "0")
     weekly = cli("lineage", "app.weekly", "--up", "1", "--down", "0")  # pandas to_sql names the table (with schema=); its read_sql queries feed it, a count(*) check does not
     assert "app.daily" in weekly and "app.audit" not in weekly, weekly
+    graph = cli("lineage", "app.weekly", "--up", "1", "--down", "0", "--format", "mermaid")  # Mermaid for GitHub: inferred links dashed, the asked-about table highlighted
+    assert graph.startswith("```mermaid\nflowchart LR") and "-.->" in graph and '["app.weekly"]' in graph and "class n0 changed" in graph, graph
     assert "staging.payments.amount" in cli("lineage", "mart.revenue_daily.revenue", "--up", "2", "--down", "0")
     assert cli("search", "revenue").splitlines()[0].startswith("mart.revenue_daily")
     (repo.parent / "outside.sql").write_text("select 'outside the repo'")  # as a crafted dbt manifest could point
@@ -480,7 +482,7 @@ def main():
     assert "pipelines/revenue.sql" in first_card["paths"] and first_card["baseline"] > 0, first_card
     assert "pipelines/revenue.sql" not in second_card["paths"], "a file must count once an hour"
     report = cli("savings")
-    assert "questions answered: 27" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
+    assert "questions answered: 28" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
     print(report)
     edges, cols = set(con.execute("select src, dst, via from edges")), set(con.execute("select * from col_edges"))
     for src, dst, via in [("mart.revenue_daily", "bi.revenue_dashboard", "import openlineage"),
@@ -544,6 +546,7 @@ def main():
     with contextlib.suppress(SystemExit):
         cli("review", "--base", "HEAD~1", "--strict")
     report = cli("review", "--base", "HEAD~1")
+    assert "```mermaid" in report and "classDef changed" in report, report  # the graph of changed tables and what they reach
     assert "text:" not in report, "parse errors never carry the SQL's text (sqlglot's token reprs quote it)"
     for text in ("## Data impact of `CMS-1234-revenue-refunds`", "`pipelines/revenue.sql` | etl.build_revenue `timedelta(hours=4)` |",
                  "mart.top_days", "bi.revenue_dashboard (openlineage)", "`reports/weekly.py`", "Refunds land three days late",

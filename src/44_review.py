@@ -57,6 +57,9 @@ def terminal_text(out):
     res, head, i = [], None, 0
     while i < len(out):
         l = out[i]
+        if l == "```mermaid":  # a graph for merge request comments: skipped on a terminal
+            i = out.index("```", i) + 1
+            continue
         if l.startswith("|") and i + 1 < len(out) and set(out[i + 1]) <= set("|-: "):
             head, i = [c.strip() for c in l.strip("|").split("|")], i + 2
             while i < len(out) and out[i].startswith("|"):
@@ -117,6 +120,11 @@ def review(con, base=None, strict=False, diff=False, where=""):
             out.append(f"| `{ds}`{' **tier ' + tier[0] + '**' if tier and tier[0] else ''} | `{f}` | {f'{run_[0][0]}.{run_[0][1]} `{run_[0][2]}`' if run_ else '-'} | {down_txt or '-'} | "
                        f"{', '.join(f'`{r}`' for r in readers[:5]) + (f' +{len(readers) - 5}' if len(readers) > 5 else '') or '-'} |")
         out.append("")
+    if produced:  # the changed tables and what they reach, as a graph (GitHub draws it; a terminal gets the table above)
+        nodes = list(dict.fromkeys([*produced, *(n for ds in produced for n in reach(ds, downs, 9))]))[:30]
+        if len(nodes) > len(produced):
+            inside = set(nodes)
+            out += mermaid_graph(nodes, [r for r in q("select src, dst, how from edges") if r[0] in inside and r[1] in inside], produced) + [""]
     if weak_all:  # links built from substituted names, bound arguments or patterns, not written plainly: a person should look
         out += [f"**Verify ({len(weak_all)} inferred link{'s' * (len(weak_all) > 1)}):** these were worked out, not read plainly, so check them before relying on the list above:", ""]
         out += [f"- `{s}` → `{d}` (`{v}`)" for s, d, v in sorted(weak_all)[:8]] + ([f"- +{len(weak_all) - 8} more"] if len(weak_all) > 8 else []) + [""]

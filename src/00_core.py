@@ -21,7 +21,7 @@ using a SQL parser instead of a model. Then answers small, token-budgeted questi
   concepts [name] [--write]                what columns mean, from how code joins and renames them; --write: concepts.yml to review
   join <table> <table>                     how to join two tables, from the joins the code has written
   export <dbt|openmetadata|datahub> [--all] concepts as dbt entities or a catalog glossary, into .data-context/exports/
-  lineage <dataset[.column]> [--up N] [--down N]   upstream / downstream tree (impact analysis)
+  lineage <dataset[.column]> [--up N] [--down N] [--format mermaid]   upstream / downstream tree, or a Mermaid graph (impact analysis)
   search <words...>                        find datasets, columns, notes and glossary terms
   note <dataset> "<text>" [--kind K] [--column C] [--source S]   record a gotcha or correction
   set <dataset> grain=... key=a,b owner=... description=...       record what a dataset is

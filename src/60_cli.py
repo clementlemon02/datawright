@@ -31,6 +31,7 @@ def main(argv=None):
     ln.add_argument("--up", type=int, default=1)
     ln.add_argument("--down", type=int, default=1)
     ln.add_argument("--limit", type=int, default=60)
+    ln.add_argument("--format", choices=("text", "mermaid"), default="text", help="mermaid: a flowchart GitHub draws in comments and READMEs")
     sub.add_parser("search").add_argument("words", nargs="+")
     n = sub.add_parser("note")
     n.add_argument("dataset")
@@ -107,7 +108,7 @@ def main(argv=None):
     elif a.cmd == "code":
         sys.stdout.write(answer("code", code, a.dataset))
     elif a.cmd == "lineage":
-        sys.stdout.write(answer("lineage", lineage_cmd, a.target, a.up, a.down, a.limit))
+        sys.stdout.write(answer("lineage", lineage_cmd, a.target, a.up, a.down, a.limit, a.format))
     elif a.cmd == "search":
         sys.stdout.write(answer("search", search, a.words))
     elif a.cmd == "query":

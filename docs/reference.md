@@ -23,7 +23,7 @@ Everything the README leaves out: the skills, every `datawright` command, why it
 | Question | Command |
 |---|---|
 | What is this table, who writes it, what runs it? | `card` |
-| What breaks if I change it, down to the dashboard tile? | `impact`, `lineage` |
+| What breaks if I change it, down to the dashboard tile? | `impact`, `lineage` (`--format mermaid` draws it: GitHub renders it in comments and READMEs; `review` includes the graph) |
 | What does this branch change? Is it safe to rerun? | `review` (`--diff` compares data with the dev copy) |
 | What do these columns mean, and how do I join these tables? | `card`, `join`, `concepts` |
 | Is the repo following good practice? | `lint`: reruns that duplicate rows, several writers, `SELECT *` writes, schedule and layer order, concept drift, secrets |

@@ -21,7 +21,7 @@ using a SQL parser instead of a model. Then answers small, token-budgeted questi
   concepts [name] [--write]                what columns mean, from how code joins and renames them; --write: concepts.yml to review
   join <table> <table>                     how to join two tables, from the joins the code has written
   export <dbt|openmetadata|datahub> [--all] concepts as dbt entities or a catalog glossary, into .data-context/exports/
-  lineage <dataset[.column]> [--up N] [--down N]   upstream / downstream tree (impact analysis)
+  lineage <dataset[.column]> [--up N] [--down N] [--format mermaid]   upstream / downstream tree, or a Mermaid graph (impact analysis)
   search <words...>                        find datasets, columns, notes and glossary terms
   note <dataset> "<text>" [--kind K] [--column C] [--source S]   record a gotcha or correction
   set <dataset> grain=... key=a,b owner=... description=...       record what a dataset is
@@ -2235,7 +2235,7 @@ def code(con, arg, limit=80):
     return name, set()  # a file read, not a saving
 
 
-def lineage_cmd(con, arg, up, down, limit):
+def lineage_cmd(con, arg, up, down, limit, fmt="text"):
     name = resolve(con, arg, quiet=True)
     columns = name is None  # not a dataset, so treat it as dataset.column
     if not columns:
@@ -2254,6 +2254,11 @@ def lineage_cmd(con, arg, up, down, limit):
         r = con.execute("select file from datasets where name=?", (m.rsplit(".", 1)[0] if columns else m,)).fetchone()
         return r[0] if r else None
     out, files = [name], {producer(name)}
+    if fmt == "mermaid":  # a graph to paste into a merge request or README: dashed arrows are inferred links
+        nodes, edges = walk_edges(con, name, up, down, table=not columns)
+        files.update(producer(n) for n in nodes)
+        print("\n".join(mermaid_graph(nodes, edges, [name])))
+        return name, files - {None}
 
     def walk(n, nbrs, arrow, depth, seen, lvl=1):
         for m in nbrs(n):
@@ -2693,6 +2698,34 @@ def reach(start, nbrs, depth):
         frontier = list(dict.fromkeys(m for n in frontier for m in nbrs(n) if m not in seen))
         seen.update(frontier)
     return seen
+
+
+def mermaid_graph(nodes, edges, changed=()):
+    """A Mermaid flowchart (GitHub draws it in comments and READMEs) of `nodes` and the (src, dst, how) `edges` among them:
+    inferred links are dashed, the nodes in `changed` are highlighted."""
+    ids = {n: f"n{i}" for i, n in enumerate(nodes)}
+    out = ["```mermaid", "flowchart LR"] + [f'  {ids[n]}["{n.replace(chr(34), chr(39))}"]' for n in nodes]
+    out += [f"  {ids[s]} {'-.->' if how == 'inferred' else '-->'} {ids[d]}" for s, d, how in edges if s in ids and d in ids]
+    chg = [ids[n] for n in nodes if n in set(changed)]
+    if chg:
+        out += ["  classDef changed fill:#fff3cd,stroke:#d97706,stroke-width:2px", f"  class {','.join(chg)} changed"]
+    return out + ["```"]
+
+
+def walk_edges(con, name, up, down, table=True, cap=40):
+    """(nodes, edges) within `up` hops upstream and `down` hops downstream of `name`, `name` first; at most `cap` nodes."""
+    sql = "select src, dst, how from edges" if table else "select src, dst, 'direct' from col_edges"
+    rows = [tuple(r) for r in con.execute(sql)]
+    nodes, edges = [name], set()
+    for depth, side in ((up, 1), (down, 0)):
+        frontier = {name}
+        for _ in range(depth):
+            hit = [r for r in rows if r[side] in frontier]
+            edges.update(hit)
+            frontier = {r[1 - side] for r in hit} - set(nodes)
+            nodes += [n for n in sorted(frontier) if len(nodes) < cap]
+            frontier &= set(nodes)
+    return nodes, sorted(e for e in edges if e[0] in nodes and e[1] in nodes)
 
 
 def weak_links(con, roots, down):
@@ -3447,6 +3480,9 @@ def terminal_text(out):
     res, head, i = [], None, 0
     while i < len(out):
         l = out[i]
+        if l == "```mermaid":  # a graph for merge request comments: skipped on a terminal
+            i = out.index("```", i) + 1
+            continue
         if l.startswith("|") and i + 1 < len(out) and set(out[i + 1]) <= set("|-: "):
             head, i = [c.strip() for c in l.strip("|").split("|")], i + 2
             while i < len(out) and out[i].startswith("|"):
@@ -3507,6 +3543,11 @@ def review(con, base=None, strict=False, diff=False, where=""):
             out.append(f"| `{ds}`{' **tier ' + tier[0] + '**' if tier and tier[0] else ''} | `{f}` | {f'{run_[0][0]}.{run_[0][1]} `{run_[0][2]}`' if run_ else '-'} | {down_txt or '-'} | "
                        f"{', '.join(f'`{r}`' for r in readers[:5]) + (f' +{len(readers) - 5}' if len(readers) > 5 else '') or '-'} |")
         out.append("")
+    if produced:  # the changed tables and what they reach, as a graph (GitHub draws it; a terminal gets the table above)
+        nodes = list(dict.fromkeys([*produced, *(n for ds in produced for n in reach(ds, downs, 9))]))[:30]
+        if len(nodes) > len(produced):
+            inside = set(nodes)
+            out += mermaid_graph(nodes, [r for r in q("select src, dst, how from edges") if r[0] in inside and r[1] in inside], produced) + [""]
     if weak_all:  # links built from substituted names, bound arguments or patterns, not written plainly: a person should look
         out += [f"**Verify ({len(weak_all)} inferred link{'s' * (len(weak_all) > 1)}):** these were worked out, not read plainly, so check them before relying on the list above:", ""]
         out += [f"- `{s}` → `{d}` (`{v}`)" for s, d, v in sorted(weak_all)[:8]] + ([f"- +{len(weak_all) - 8} more"] if len(weak_all) > 8 else []) + [""]
@@ -3783,6 +3824,7 @@ def main(argv=None):
     ln.add_argument("--up", type=int, default=1)
     ln.add_argument("--down", type=int, default=1)
     ln.add_argument("--limit", type=int, default=60)
+    ln.add_argument("--format", choices=("text", "mermaid"), default="text", help="mermaid: a flowchart GitHub draws in comments and READMEs")
     sub.add_parser("search").add_argument("words", nargs="+")
     n = sub.add_parser("note")
     n.add_argument("dataset")
@@ -3859,7 +3901,7 @@ def main(argv=None):
     elif a.cmd == "code":
         sys.stdout.write(answer("code", code, a.dataset))
     elif a.cmd == "lineage":
-        sys.stdout.write(answer("lineage", lineage_cmd, a.target, a.up, a.down, a.limit))
+        sys.stdout.write(answer("lineage", lineage_cmd, a.target, a.up, a.down, a.limit, a.format))
     elif a.cmd == "search":
         sys.stdout.write(answer("search", search, a.words))
     elif a.cmd == "query":
