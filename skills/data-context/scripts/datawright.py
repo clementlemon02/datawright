@@ -45,7 +45,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 logging.getLogger("sqlglot").setLevel(logging.CRITICAL)  # its warnings quote SQL, which can contain secrets
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 SKIP = {".git", ".venv", "venv", "node_modules", "target", "dbt_packages", "dbt_modules", "__pycache__", ".data-context"}
 SQL_START = re.compile(r"\s*(?:--[^\n]*\n\s*|/\*.*?\*/\s*|jinja_expr\s*)*(with|select|insert|merge|create|update)\b", re.I | re.S)  # dbt models open with {{ config(...) }}
 KINDS = ("correction", "gotcha", "caveat", "decision")  # also the order notes appear in cards
