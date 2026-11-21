@@ -1,9 +1,9 @@
 {
  "balboa": {
-  "best_practices": "4 findings (select * into a table 2, rerun duplicates rows 1, several writers 1)",
+  "best_practices": "8 findings (scheduled table, unscheduled upstream 4, select * into a table 2, rerun duplicates rows 1, several writers 1)",
   "column_edges": 241,
   "concepts": 0,
-  "datasets": 74,
+  "datasets": 75,
   "dialect": "snowflake",
   "edges": 42,
   "edges_declared": 0,
@@ -32,18 +32,18 @@
   "value_maps": 5
  },
  "e2e-pipeline": {
-  "best_practices": "5 findings (secret in code 3, rerun duplicates rows 1, scheduled table, unscheduled upstream 1)",
+  "best_practices": "6 findings (secret in code 3, rerun duplicates rows 2, scheduled table, unscheduled upstream 1)",
   "column_edges": 26,
   "concepts": 5,
-  "datasets": 18,
+  "datasets": 19,
   "dialect": "tsql",
   "edges": 10,
   "edges_declared": 0,
   "edges_direct": 10,
   "edges_inferred": 0,
   "joins": 11,
-  "readers": 11,
-  "runs": 68,
+  "readers": 12,
+  "runs": 79,
   "unparsed": 0,
   "value_maps": 1
  },

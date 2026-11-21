@@ -3,7 +3,7 @@
 # dependencies = ["sqlglot>=30", "pyyaml>=6"]
 # ///
 """Self-check for datawright: builds a tiny repo and checks lineage, notes, staleness, savings and the MCP server. Run: uv run tests/test_datawright.py"""
-import contextlib, importlib.util, io, json, os, sqlite3, subprocess, sys, tempfile
+import contextlib, importlib.util, io, json, os, re, sqlite3, subprocess, sys, tempfile
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("datawright", Path(__file__).parents[1] / "skills/data-context/scripts/datawright.py")
@@ -76,6 +76,11 @@ FILES = {
     "lake/dags/factory.py": 'import yaml\nfrom pathlib import Path\nfrom airflow import DAG\nfrom airflow.operators.python import PythonOperator\nconf = yaml.safe_load(open(Path(__file__).parent.parent / "config" / "tables.yaml"))\nwith DAG("factory", schedule="@daily") as dag:\n    for t in conf["tables"]:\n        PythonOperator(task_id=f"load_{t[\'name\']}", python_callable=print)\n        spark.table(f"{t[\'schema\']}.{t[\'name\']}_raw").write.saveAsTable(f"{t.get(\'schema\')}.{t[\'name\']}")\n',
     "lake/jobs/click_job.py": 'import click\n\n@click.command()\n@click.argument("source")\n@click.option("--target", "-t", default="gold.default_out")\ndef main(source, target):\n    spark.table(f"silver.{source}").write.saveAsTable(target)\n',
     "lake/jobs/weekly.py": 'import pandas as pd\ndf = pd.read_sql("select a, b from app.daily where a > 1", eng)\npd.read_sql("select count(*) from app.audit", eng)\ndf.to_sql("weekly", eng, schema="app", if_exists="replace")\n',
+    "lake/nb/report.ipynb": '{"cells":[{"cell_type":"code","source":["%%sql\\n","select user_id from nbsrc.events"]},{"cell_type":"code","source":["!echo hi\\n","df.to_sql(\'nb_out\', eng, schema=\'nbrep\')\\n"]}],"metadata":{},"nbformat":4}',
+    "lake/jobs/gh_dlt.py": 'import dlt\n\n@dlt.resource(name="issues")\ndef get_issues():\n    yield []\n\n@dlt.resource\ndef pulls():\n    yield []\n\ndlt.pipeline(pipeline_name="gh", destination="duckdb", dataset_name="dltgh").run([], table_name="stars")\n',
+    "lake/flows/daily.py": 'from prefect import flow, task\n\n@task(name="publish")\ndef publish():\n    df.to_sql("pf_out", eng, schema="pfstage")\n\n@flow(name="daily-pf")\ndef daily():\n    publish()\n\ndaily.serve(cron="0 6 * * *")\n',
+    "lake/svc/producer.py": 'from kafka import KafkaProducer\np = KafkaProducer()\np.send("kt.created", b"x")\n',
+    "lake/svc/consumer.py": 'from confluent_kafka import Consumer, Producer\nc = Consumer({})\nc.subscribe(["kt.created"])\nProducer({}).produce("kt.enriched", b"z")\n',
     "lake/jobs/common.py": 'def publish(table):\n    spark.table(f"stage.{table}").write.saveAsTable(f"pub.{table}")\n',
     "lake/jobs/publish_all.py": 'from lake.jobs.common import publish\n\npublish("users")\npublish(table="teams")\n',
     "lake/jobs/entry.py": "from lake.jobs.middle import run\n\nrun(\"cart\")\nrun(\"wishlist\")\n",
@@ -334,6 +339,10 @@ def main():
     assert "mart.revenue_daily" in cli("lineage", "raw.orders", "--down", "9", "--up", "0")
     weekly = cli("lineage", "app.weekly", "--up", "1", "--down", "0")  # pandas to_sql names the table (with schema=); its read_sql queries feed it, a count(*) check does not
     assert "app.daily" in weekly and "app.audit" not in weekly, weekly
+    assert "nbsrc.events" in cli("lineage", "nbrep.nb_out", "--up", "1", "--down", "0")  # notebook: %%sql cells and to_sql in code cells, magics skipped
+    assert {"dltgh.issues", "dltgh.pulls", "dltgh.stars"} <= set(re.findall(r"dltgh\.\w+", cli("search", "dltgh")))  # dlt: resource names and table_name=
+    assert "daily-pf.publish 0 6 * * *" in cli("card", "pfstage.pf_out")  # Prefect: the task and the .serve(cron=) schedule
+    assert "kafka:kt.created" in cli("lineage", "kafka:kt.enriched", "--up", "1", "--down", "0")  # kafka-python and confluent-kafka producers and consumers
     graph = cli("lineage", "app.weekly", "--up", "1", "--down", "0", "--format", "mermaid")  # Mermaid for GitHub: inferred links dashed, the asked-about table highlighted
     assert graph.startswith("```mermaid\nflowchart LR") and "-.->" in graph and '["app.weekly"]' in graph and "class n0 changed" in graph, graph
     assert "staging.payments.amount" in cli("lineage", "mart.revenue_daily.revenue", "--up", "2", "--down", "0")
@@ -498,7 +507,7 @@ def main():
     assert "pipelines/revenue.sql" in first_card["paths"] and first_card["baseline"] > 0, first_card
     assert "pipelines/revenue.sql" not in second_card["paths"], "a file must count once an hour"
     report = cli("savings")
-    assert "questions answered: 28" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
+    assert "questions answered: 32" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
     print(report)
     edges, cols = set(con.execute("select src, dst, via from edges")), set(con.execute("select * from col_edges"))
     for src, dst, via in [("mart.revenue_daily", "bi.revenue_dashboard", "import openlineage"),

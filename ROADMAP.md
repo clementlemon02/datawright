@@ -39,11 +39,10 @@ From [docs/landscape.md](docs/landscape.md): what Uber, Airbnb, Monzo and tools 
 |---|---|---|
 | Real topic names from Helm values | Topics set by env vars resolve from deploy files in `repos:`, `env:` in config.yml or connector `env` records (and coverage counts the rest, and values no code reads); Helm templates with `{{ .Values }}` aren't expanded | A Helm chart's values.yaml and templates resolve them; tested on a public chart |
 | DataWorks schedules | Alibaba's scheduler keeps DAGs in the cloud, so MaxCompute jobs show no "runs in" | An export through the DataWorks API, read by a connector, like `bi_export.py` |
-| Python Kafka clients | kafka-python and confluent-kafka producers and consumers aren't read (Kafka Connect is, through the `kafka_connect` connector) | Producer and consumer calls become topic edges, with tests |
 | Column lineage for Flink connector tables | Flink `WITH (...)` DDL doesn't parse, so those tables lose column lineage | Strip the WITH clause before parsing; unparsed count on the Flink repo drops to near 0 |
 | OpenLineage job names as "runs in" | Events name the Airflow DAG and task for jobs outside the repo | Cards show them, tagged `(openlineage)` |
 | Marquez lineage graph format | Only raw events are read | `/api/v1/lineage` responses import too |
-| More ready-made connectors | Coverage flags Prefect, Luigi, Beam, dlt, SQLMesh, Great Expectations, Soda, Kestra and notebooks, but has no reader for them (Dagster now has one) | Prefect and SQLMesh next, each tested on a public repo; Sling replication YAML and Dagster components for the gaps hooli showed |
+| More ready-made connectors | Read now: notebooks (.ipynb), dlt, Prefect and Python Kafka clients. Coverage still flags Luigi, Beam, SQLMesh, Great Expectations, Soda and Kestra, but has no reader for them (Dagster has one) | SQLMesh and Luigi next, each tested on a public repo; Prefect schedules from prefect.yaml; Sling replication YAML and Dagster components for the gaps they leave |
 
 ## Context layer
 

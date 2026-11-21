@@ -234,12 +234,22 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
 
     # ponytail: Spark DataFrame lineage is by group: a call or loop iteration's writes take its own reads and the file's
     groups = {}  # group -> (reads, writes)
+    write_lines = {}  # table -> line of the call that writes it: a task's lines then say which tables it builds
     pandas_writes = set()  # to_sql targets: fed by the file's read_sql queries too
-    for n, (group, env) in ((n, s) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) for s in scopes(n)):
+    kafka = re.search(r"\b(kafka|confluent_kafka|aiokafka)\b", text) is not None  # clients: producers write topics, consumers read them
+    consumers = ("KafkaConsumer", "AIOKafkaConsumer")
+    for n, (group, env) in ((n, s) for n in ast.walk(tree) if isinstance(n, ast.Call) and (isinstance(n.func, ast.Attribute)
+                            or kafka and getattr(n.func, "id", "") in consumers) for s in scopes(n)):
         render_ = lambda x: render(x, env)
-        attr, args, names = n.func.attr, n.args, []
+        attr, args, names = (n.func.attr if isinstance(n.func, ast.Attribute) else n.func.id), n.args, []
         if attr in ("table", "saveAsTable", "insertInto", "toTable", "writeTo") and args:
             names = [render_(args[0])]
+        elif kafka and attr in ("produce", "send", "send_and_wait") and (args or any(k.arg == "topic" for k in n.keywords)):
+            topic = render_(args[0] if args else next(k.value for k in n.keywords if k.arg == "topic"))
+            names = ["kafka:" + topic] if topic else []  # a topic named at run time is no dataset
+        elif kafka and (attr in consumers or attr == "subscribe") and (args or any(k.arg == "topics" for k in n.keywords)):
+            topics = [e for a in (args if attr in consumers else args[:1]) for e in (a.elts if isinstance(a, (ast.List, ast.Tuple, ast.Set)) else [a])]
+            names = ["kafka:" + t for t in (render_(e) for e in topics) if t]
         elif attr in ("to_sql", "read_sql_table"):  # pandas: the table is the name, qualified by schema=
             nm = args[0] if args else next((k.value for k in n.keywords if k.arg in ("name", "table_name")), None)
             sch = next((k.value for k in n.keywords if k.arg == "schema"), None)
@@ -259,15 +269,18 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
         names = [x for x in names if x and (re.fullmatch(r"[\w.:-]+", x) or STORAGE.match(x)) and not x.lower().startswith("global_temp.")]
         if not names:
             continue
-        chain, cur = set(), n.func.value  # spark.read.format(...).option(...): which side of the chain are we on?
+        chain, cur = set(), getattr(n.func, "value", None)  # spark.read.format(...).option(...): which side of the chain are we on?
         while isinstance(cur, (ast.Call, ast.Attribute)):
             cur = cur.func if isinstance(cur, ast.Call) else cur
             if isinstance(cur, ast.Attribute):
                 chain.add(cur.attr)
                 cur = cur.value
-        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save", "to_sql") or attr.startswith("to_") or chain & {"write", "writeStream"}
+        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save", "to_sql") or attr.startswith("to_") or (kafka and attr in ("produce", "send", "send_and_wait")) or chain & {"write", "writeStream"}
         if attr == "to_sql" and not TEST_FILE.search(path):
             pandas_writes.update(x.lower() for x in names)
+        if written and not TEST_FILE.search(path):
+            for x in names:
+                write_lines.setdefault(x.lower(), n.lineno)
         groups.setdefault(group, (set(), set()))[1 if written and not TEST_FILE.search(path) else 0].update(x.lower() for x in names)
         if written and not TEST_FILE.search(path):  # Spark's save mode, from the call and the line it sits on
             seg = "\n".join(text.splitlines()[n.lineno - 1:n.end_lineno + 1])
@@ -281,14 +294,18 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
         feed = all_reads if (fk, lk) == (None, None) else rs | groups.get((fk, None), (set(), set()))[0] | file_reads
         for w in ws:
             feed = feed | sql_reads if w in pandas_writes else feed
-            ix.dataset(w, "topic" if w.startswith("kafka:") else "files" if STORAGE.match(w) else "pyspark", file=path, line=1)
-            ix.writers.setdefault((w, path), 1)
+            ix.dataset(w, "topic" if w.startswith("kafka:") else "files" if STORAGE.match(w) else "pyspark", file=path, line=write_lines.get(w, 1))
+            ix.writers.setdefault((w, path), write_lines.get(w, 1))
             for r in feed - ws:
                 ix.dataset(r)
                 ix.edge(r, w, f"{path} (pyspark)", "inferred")
     for r in all_reads if not all_writes else ():
         ix.dataset(r)["uses"] += 1
         ix.readers.setdefault((r, path), 1)
+    if re.search(r"\bdlt\b", text):
+        dlt_tables(ix, tree, path, render)
+    if re.search(r"\bprefect\b", text):
+        ix.runs += prefect_runs(tree, path, render)
     if re.search(r"\bDAG\(|@dag\b", text):
         ix.runs += airflow_runs(tree, path, render, iter_values, files, ix.selectors, ix.calls)
     return out

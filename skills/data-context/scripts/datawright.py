@@ -919,12 +919,22 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
 
     # ponytail: Spark DataFrame lineage is by group: a call or loop iteration's writes take its own reads and the file's
     groups = {}  # group -> (reads, writes)
+    write_lines = {}  # table -> line of the call that writes it: a task's lines then say which tables it builds
     pandas_writes = set()  # to_sql targets: fed by the file's read_sql queries too
-    for n, (group, env) in ((n, s) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) for s in scopes(n)):
+    kafka = re.search(r"\b(kafka|confluent_kafka|aiokafka)\b", text) is not None  # clients: producers write topics, consumers read them
+    consumers = ("KafkaConsumer", "AIOKafkaConsumer")
+    for n, (group, env) in ((n, s) for n in ast.walk(tree) if isinstance(n, ast.Call) and (isinstance(n.func, ast.Attribute)
+                            or kafka and getattr(n.func, "id", "") in consumers) for s in scopes(n)):
         render_ = lambda x: render(x, env)
-        attr, args, names = n.func.attr, n.args, []
+        attr, args, names = (n.func.attr if isinstance(n.func, ast.Attribute) else n.func.id), n.args, []
         if attr in ("table", "saveAsTable", "insertInto", "toTable", "writeTo") and args:
             names = [render_(args[0])]
+        elif kafka and attr in ("produce", "send", "send_and_wait") and (args or any(k.arg == "topic" for k in n.keywords)):
+            topic = render_(args[0] if args else next(k.value for k in n.keywords if k.arg == "topic"))
+            names = ["kafka:" + topic] if topic else []  # a topic named at run time is no dataset
+        elif kafka and (attr in consumers or attr == "subscribe") and (args or any(k.arg == "topics" for k in n.keywords)):
+            topics = [e for a in (args if attr in consumers else args[:1]) for e in (a.elts if isinstance(a, (ast.List, ast.Tuple, ast.Set)) else [a])]
+            names = ["kafka:" + t for t in (render_(e) for e in topics) if t]
         elif attr in ("to_sql", "read_sql_table"):  # pandas: the table is the name, qualified by schema=
             nm = args[0] if args else next((k.value for k in n.keywords if k.arg in ("name", "table_name")), None)
             sch = next((k.value for k in n.keywords if k.arg == "schema"), None)
@@ -944,15 +954,18 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
         names = [x for x in names if x and (re.fullmatch(r"[\w.:-]+", x) or STORAGE.match(x)) and not x.lower().startswith("global_temp.")]
         if not names:
             continue
-        chain, cur = set(), n.func.value  # spark.read.format(...).option(...): which side of the chain are we on?
+        chain, cur = set(), getattr(n.func, "value", None)  # spark.read.format(...).option(...): which side of the chain are we on?
         while isinstance(cur, (ast.Call, ast.Attribute)):
             cur = cur.func if isinstance(cur, ast.Call) else cur
             if isinstance(cur, ast.Attribute):
                 chain.add(cur.attr)
                 cur = cur.value
-        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save", "to_sql") or attr.startswith("to_") or chain & {"write", "writeStream"}
+        written = attr in ("saveAsTable", "insertInto", "toTable", "writeTo", "save", "to_sql") or attr.startswith("to_") or (kafka and attr in ("produce", "send", "send_and_wait")) or chain & {"write", "writeStream"}
         if attr == "to_sql" and not TEST_FILE.search(path):
             pandas_writes.update(x.lower() for x in names)
+        if written and not TEST_FILE.search(path):
+            for x in names:
+                write_lines.setdefault(x.lower(), n.lineno)
         groups.setdefault(group, (set(), set()))[1 if written and not TEST_FILE.search(path) else 0].update(x.lower() for x in names)
         if written and not TEST_FILE.search(path):  # Spark's save mode, from the call and the line it sits on
             seg = "\n".join(text.splitlines()[n.lineno - 1:n.end_lineno + 1])
@@ -966,14 +979,18 @@ def extract_python(ix, path, text, files=frozenset(), argv=None, bind=None):
         feed = all_reads if (fk, lk) == (None, None) else rs | groups.get((fk, None), (set(), set()))[0] | file_reads
         for w in ws:
             feed = feed | sql_reads if w in pandas_writes else feed
-            ix.dataset(w, "topic" if w.startswith("kafka:") else "files" if STORAGE.match(w) else "pyspark", file=path, line=1)
-            ix.writers.setdefault((w, path), 1)
+            ix.dataset(w, "topic" if w.startswith("kafka:") else "files" if STORAGE.match(w) else "pyspark", file=path, line=write_lines.get(w, 1))
+            ix.writers.setdefault((w, path), write_lines.get(w, 1))
             for r in feed - ws:
                 ix.dataset(r)
                 ix.edge(r, w, f"{path} (pyspark)", "inferred")
     for r in all_reads if not all_writes else ():
         ix.dataset(r)["uses"] += 1
         ix.readers.setdefault((r, path), 1)
+    if re.search(r"\bdlt\b", text):
+        dlt_tables(ix, tree, path, render)
+    if re.search(r"\bprefect\b", text):
+        ix.runs += prefect_runs(tree, path, render)
     if re.search(r"\bDAG\(|@dag\b", text):
         ix.runs += airflow_runs(tree, path, render, iter_values, files, ix.selectors, ix.calls)
     return out
@@ -1800,7 +1817,7 @@ def build(dialect=None):
                     mine.append((name, extract, owns))
             except Exception as e:
                 ix.issue(f, 0, f"connector {name}: {redact(e)}")
-        builtin = suffix in (".sql", ".hql", ".py", ".java", ".scala", ".kt") and not any(o for *_, o in mine)  # OWNS: the connector reads it instead
+        builtin = suffix in (".sql", ".hql", ".py", ".ipynb", ".java", ".scala", ".kt") and not any(o for *_, o in mine)  # OWNS: the connector reads it instead
         if not builtin and not mine:
             continue
         text = (ROOT / f).read_text(encoding="utf-8", errors="replace")
@@ -1818,6 +1835,8 @@ def build(dialect=None):
             stmts += extract_jvm(ix, f, text, {k: v for k, v in shared.items() if v is not None}, {k: v for k, v in exprs.items() if v}, env)
         elif suffix == ".py":
             stmts += extract_python(ix, f, text, file_set)
+        elif suffix == ".ipynb":
+            stmts += extract_python(ix, f, notebook_code(text), file_set)
         else:
             in_project = [p for p in projects if Path(p) in Path(f).parents]
             if in_project and "macros" in Path(f).relative_to(in_project[0]).parts:
@@ -1917,9 +1936,9 @@ def build(dialect=None):
     writers = {}
     for (ds, f), ln in ix.writers.items():
         writers.setdefault(final(ds), []).append((f, ln))
-    for name, ws in writers.items():  # the main producer: not a backfill/adhoc/test script if there's a choice
+    for name, ws in writers.items():  # the main producer: not a notebook, backfill/adhoc/test script if there's a choice
         if name in datasets:
-            datasets[name]["file"], datasets[name]["line"] = min(ws, key=lambda w: (bool(SIDE_JOB.search(w[0])), w[0]))
+            datasets[name]["file"], datasets[name]["line"] = min(ws, key=lambda w: (w[0].endswith(".ipynb"), bool(SIDE_JOB.search(w[0])), w[0]))
     for name, c in curated.items():
         d = datasets.setdefault(final(name), {"kind": "source", "file": None, "line": None, "description": None, "rows": None, "uses": 0})
         d.update({k: v for k, v in c.items()})
@@ -2031,6 +2050,88 @@ def build(dialect=None):
         print(f"a newer datawright is installed ({'.'.join(map(str, newest[0][0]))}): run datawright update")
 
 
+# ---------------------------------------------------------------- Python pipelines: notebooks, dlt, Prefect
+
+def notebook_code(text):
+    """A Jupyter notebook's code cells as one Python file: `%sql` and `%%sql` magics become SQL strings, other magics and shell
+    lines are commented out. ponytail: lines count within the joined code cells, not the .ipynb file."""
+    try:
+        cells = json.loads(text).get("cells", [])
+    except ValueError:
+        return ""
+    out = []
+    for c in cells:
+        if c.get("cell_type") != "code":
+            continue
+        src = c.get("source", "")
+        lines = (src if isinstance(src, str) else "".join(src)).splitlines()
+        if lines and re.match(r"\s*%%sql\b", lines[0]):
+            lines = ['_ = """' + re.sub(r"\s*%%sql\b[^\n]*", "", lines[0])] + [l.replace('"""', "'''") for l in lines[1:]] + ['"""']
+        else:
+            lines = ['_ = """' + m[1].replace('"""', "'''") + '"""' if (m := re.match(r"\s*%sql\s+(.*)", l)) else
+                     "#" + l if re.match(r"\s*[%!]", l) else l for l in lines]
+        out += lines + [""]
+    return "\n".join(out)
+
+
+def pipeline_decorators(fn):
+    """[(decorator name, its Call or None)] of a function: @flow, @flow(name="x"), @prefect.task, @dlt.resource(...)."""
+    out = []
+    for d in fn.decorator_list:
+        call = d if isinstance(d, ast.Call) else None
+        target = call.func if call else d
+        out.append((target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", ""), call))
+    return out
+
+
+def dlt_tables(ix, tree, path, render):
+    """dlt writes {dataset_name}.{table}: the table is a resource's name (or table_name=) and pipeline.run(..., table_name=).
+    ponytail: one dataset per file; its sources are external APIs, so no upstream links."""
+    ds = None
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "pipeline" and getattr(n.func.value, "id", "") == "dlt":
+            ds = next((render(k.value) for k in n.keywords if k.arg == "dataset_name"), None) or ds
+    if not ds:
+        return
+    tables = {}  # table -> line
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for name, call in pipeline_decorators(n):
+                if name in ("resource", "transformer"):
+                    kw = {k.arg: render(k.value) for k in (call.keywords if call else []) if k.arg}
+                    tables.setdefault(kw.get("table_name") or kw.get("name") or n.name, n.lineno)
+        elif isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "run":
+            t = next((render(k.value) for k in n.keywords if k.arg == "table_name"), None)
+            if t:
+                tables.setdefault(t, n.lineno)
+    for t, line in tables.items():
+        name = f"{ds}.{t}".lower()
+        if re.fullmatch(r"[\w.]+", name):
+            ix.dataset(name, "table", file=path, line=line)
+            ix.writers.setdefault((name, path), line)
+
+
+def prefect_runs(tree, path, render):
+    """[(file, first line, last line, flow, task, schedule, file:line)]: each @task function runs inside the file's @flow, on the
+    schedule its `.serve(cron=...)` sets. A flow without tasks runs its own lines. ponytail: schedules from prefect.yaml aren't read."""
+    flows, tasks, cron = [], [], "manual"
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for name, call in pipeline_decorators(n):
+                kw = {k.arg: render(k.value) for k in (call.keywords if call else []) if k.arg}
+                if name == "flow":
+                    flows.append((kw.get("name") or n.name, n))
+                elif name == "task":
+                    tasks.append((kw.get("name") or n.name, n))
+        elif isinstance(n, ast.Call) and getattr(n.func, "attr", "") in ("serve", "deploy"):
+            c = next((k.value for k in n.keywords if k.arg in ("cron", "interval")), None)
+            if c is not None:
+                cron = render(c) or ast.unparse(c)[:40]
+    if not flows:
+        return []
+    flow = flows[0][0]
+    rows = [(path, t.lineno, t.end_lineno, flow, name, cron, f"{path}:{t.lineno}") for name, t in tasks]
+    return rows + ([(path, f.lineno, f.end_lineno, name, name, cron, f"{path}:{f.lineno}") for name, f in flows] if not tasks else [])
 # ---------------------------------------------------------------- queries
 
 def connect():
@@ -3329,9 +3430,9 @@ HINTS = [  # what an unread file looks like, from its first few KB, and what to 
     (r"(?im)^[\s\-|>:\"']*(select\s+[\s\S]{1,400}?\bfrom\s+[\w.`\"]+|insert\s+(into|overwrite)\s+\S+|merge\s+into\s+\S+|create\s+(or\s+replace\s+)?(table|view)\s+\S+)", "SQL inside config: a connector can hand it over as sql records"),
 ]
 KNOWN_TOOLS = [  # tools with no built-in reader, by what their code or config contains
-    ("Dagster", r"\bfrom dagster\b|\bimport dagster\b"), ("Prefect", r"\bfrom prefect\b|\bimport prefect\b"), ("Luigi", r"\bimport luigi\b"),
-    ("Apache Beam", r"\bimport apache_beam\b"), ("dlt", r"\bimport dlt\b"), ("SQLMesh", r"\bfrom sqlmesh\b|MODEL\s*\("),
-    ("Great Expectations", r"\bgreat_expectations\b"), ("Soda", r"\bsoda(cl)?\b.*checks"), ("Kafka clients", r"\bKafkaProducer\b|\bconfluent_kafka\b"),
+    ("Dagster", r"\bfrom dagster\b|\bimport dagster\b"), ("Luigi", r"\bimport luigi\b"),
+    ("Apache Beam", r"\bimport apache_beam\b"), ("SQLMesh", r"\bfrom sqlmesh\b|MODEL\s*\("),
+    ("Great Expectations", r"\bgreat_expectations\b"), ("Soda", r"\bsoda(cl)?\b.*checks"),
     ("PyODPS (MaxCompute)", r"\bfrom odps\b|\bimport odps\b|\bpyodps\b"), ("DataWorks", r"\bdataworks\b"),
     ("Databricks notebooks", r"^# Databricks notebook source"), ("Kestra", r"^\s*namespace:\s*\S+[\s\S]*\btasks:"),
 ]

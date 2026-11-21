@@ -44,7 +44,7 @@ def build(dialect=None):
                     mine.append((name, extract, owns))
             except Exception as e:
                 ix.issue(f, 0, f"connector {name}: {redact(e)}")
-        builtin = suffix in (".sql", ".hql", ".py", ".java", ".scala", ".kt") and not any(o for *_, o in mine)  # OWNS: the connector reads it instead
+        builtin = suffix in (".sql", ".hql", ".py", ".ipynb", ".java", ".scala", ".kt") and not any(o for *_, o in mine)  # OWNS: the connector reads it instead
         if not builtin and not mine:
             continue
         text = (ROOT / f).read_text(encoding="utf-8", errors="replace")
@@ -62,6 +62,8 @@ def build(dialect=None):
             stmts += extract_jvm(ix, f, text, {k: v for k, v in shared.items() if v is not None}, {k: v for k, v in exprs.items() if v}, env)
         elif suffix == ".py":
             stmts += extract_python(ix, f, text, file_set)
+        elif suffix == ".ipynb":
+            stmts += extract_python(ix, f, notebook_code(text), file_set)
         else:
             in_project = [p for p in projects if Path(p) in Path(f).parents]
             if in_project and "macros" in Path(f).relative_to(in_project[0]).parts:
@@ -161,9 +163,9 @@ def build(dialect=None):
     writers = {}
     for (ds, f), ln in ix.writers.items():
         writers.setdefault(final(ds), []).append((f, ln))
-    for name, ws in writers.items():  # the main producer: not a backfill/adhoc/test script if there's a choice
+    for name, ws in writers.items():  # the main producer: not a notebook, backfill/adhoc/test script if there's a choice
         if name in datasets:
-            datasets[name]["file"], datasets[name]["line"] = min(ws, key=lambda w: (bool(SIDE_JOB.search(w[0])), w[0]))
+            datasets[name]["file"], datasets[name]["line"] = min(ws, key=lambda w: (w[0].endswith(".ipynb"), bool(SIDE_JOB.search(w[0])), w[0]))
     for name, c in curated.items():
         d = datasets.setdefault(final(name), {"kind": "source", "file": None, "line": None, "description": None, "rows": None, "uses": 0})
         d.update({k: v for k, v in c.items()})

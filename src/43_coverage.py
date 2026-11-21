@@ -11,9 +11,9 @@ HINTS = [  # what an unread file looks like, from its first few KB, and what to 
     (r"(?im)^[\s\-|>:\"']*(select\s+[\s\S]{1,400}?\bfrom\s+[\w.`\"]+|insert\s+(into|overwrite)\s+\S+|merge\s+into\s+\S+|create\s+(or\s+replace\s+)?(table|view)\s+\S+)", "SQL inside config: a connector can hand it over as sql records"),
 ]
 KNOWN_TOOLS = [  # tools with no built-in reader, by what their code or config contains
-    ("Dagster", r"\bfrom dagster\b|\bimport dagster\b"), ("Prefect", r"\bfrom prefect\b|\bimport prefect\b"), ("Luigi", r"\bimport luigi\b"),
-    ("Apache Beam", r"\bimport apache_beam\b"), ("dlt", r"\bimport dlt\b"), ("SQLMesh", r"\bfrom sqlmesh\b|MODEL\s*\("),
-    ("Great Expectations", r"\bgreat_expectations\b"), ("Soda", r"\bsoda(cl)?\b.*checks"), ("Kafka clients", r"\bKafkaProducer\b|\bconfluent_kafka\b"),
+    ("Dagster", r"\bfrom dagster\b|\bimport dagster\b"), ("Luigi", r"\bimport luigi\b"),
+    ("Apache Beam", r"\bimport apache_beam\b"), ("SQLMesh", r"\bfrom sqlmesh\b|MODEL\s*\("),
+    ("Great Expectations", r"\bgreat_expectations\b"), ("Soda", r"\bsoda(cl)?\b.*checks"),
     ("PyODPS (MaxCompute)", r"\bfrom odps\b|\bimport odps\b|\bpyodps\b"), ("DataWorks", r"\bdataworks\b"),
     ("Databricks notebooks", r"^# Databricks notebook source"), ("Kestra", r"^\s*namespace:\s*\S+[\s\S]*\btasks:"),
 ]

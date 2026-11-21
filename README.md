@@ -51,7 +51,7 @@ flowchart LR
 - **Any agent can use it.** A command line, plus an MCP server (`datawright serve`) for clients with no shell.
 - **11 agent skills on top** (set up, build, change, debug, test, review, optimize, on-call, tickets) that teach your agent to use it like a senior data engineer.
 
-**Reads:** SQL · dbt · Airflow · Dagster · Spark · Flink · Kafka · Java (MyBatis) · Looker · Superset · Metabase · data contracts (ODCS). Anything else: a small connector.
+**Reads:** SQL · dbt · Airflow · Dagster · Prefect · dlt · notebooks · pandas · Spark · Flink · Kafka (Java and Python) · Java (MyBatis) · Looker · Superset · Metabase · data contracts (ODCS). Anything else: a small connector.
 **Agents:** Claude Code · Codex · Cursor · Gemini CLI · anything that reads [Agent Skills](https://agentskills.io).
 
 ## Quick start
