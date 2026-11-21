@@ -3499,6 +3499,54 @@ def terminal_text(out):
     return re.sub(r"</?sub>|`|\*\*", "", t)
 
 
+def signature(text, dialect):
+    """What a SQL file's queries produce: [({output column: expression}, {clause: sql})], one per statement; None when one doesn't parse."""
+    import sqlglot
+    from sqlglot import exp
+    out = []
+    for _, stmt in chunks(strip_jinja(text)):
+        try:
+            tree = sqlglot.parse_one(stmt, read=dialect or None)
+        except Exception:
+            return None
+        inner = tree.args.get("expression")  # CREATE TABLE AS and INSERT carry the query
+        query = tree if isinstance(tree, exp.Query) else inner if isinstance(inner, exp.Query) else None
+        if query is None:
+            out.append(({}, {"statement": tree.sql(dialect or None).lower()}))
+        elif isinstance(query, exp.Select):
+            rest = query.copy()
+            rest.set("expressions", [])
+            out.append(({(e.alias_or_name or e.sql()).lower(): e.unalias().sql(dialect or None).lower() for e in query.expressions},
+                        {k: " ".join(x.sql(dialect or None) for x in (v if isinstance(v, list) else [v])).lower()
+                         for k, v in rest.args.items() if v and k != "expressions"}))
+        else:  # UNION and friends: any edit counts
+            out.append(({c.lower(): "" for c in query.named_selects}, {"set operation": query.sql(dialect or None).lower()}))
+    return out
+
+
+CLAUSES = {"from": "FROM", "from_": "FROM", "joins": "JOIN", "where": "WHERE", "group": "GROUP BY", "having": "HAVING",
+           "qualify": "QUALIFY", "distinct": "DISTINCT", "limit": "LIMIT", "with": "CTE", "with_": "CTE", "order": "ORDER BY"}
+
+
+def classify_change(old, new):
+    """(label, removed columns, changed columns, added columns, clauses changed): breaking when rows or an existing column
+    change, non-breaking when columns are only added, none when only formatting differs, unknown when SQL doesn't parse."""
+    if old is None or new is None:
+        return "unknown", [], [], [], []
+    if len(old) != len(new):
+        return "breaking", [], [], [], ["statements added or removed"]
+    removed, changed, added, clauses = [], [], [], []
+    for (oc, ok), (nc, nk) in zip(old, new):
+        removed += [c for c in oc if c not in nc]
+        changed += [c for c in oc if c in nc and oc[c] != nc[c]]
+        added += [c for c in nc if c not in oc]
+        clauses += [CLAUSES.get(k, k.upper()) for k in dict.fromkeys([*ok, *nk]) if ok.get(k) != nk.get(k)]
+    clauses = list(dict.fromkeys(clauses))
+    if removed or changed or clauses:
+        return "breaking", removed, changed, added, clauses
+    return ("non-breaking" if added else "none"), [], [], added, []
+
+
 def review(con, base=None, strict=False, diff=False, where=""):
     """Markdown impact report for this branch's changes against base: what the changed code produces and reads, what's
     downstream, recorded gotchas, SQL that stopped parsing, and the ticket keys; with diff, the data before and after.
@@ -3548,6 +3596,28 @@ def review(con, base=None, strict=False, diff=False, where=""):
         if len(nodes) > len(produced):
             inside = set(nodes)
             out += mermaid_graph(nodes, [r for r in q("select src, dst, how from edges") if r[0] in inside and r[1] in inside], produced) + [""]
+    if produced:  # what kind of change each changed SQL file makes: SQLMesh-style breaking / non-breaking
+        dialect = setting("dialect", "") or (con.execute("select v from meta where k='dialect'").fetchone() or [""])[0]
+        kinds = []
+        for f, names in sorted({f: [d for d, g in produced.items() if g == f] for f in produced.values()}.items()):
+            if not f.endswith((".sql", ".hql")) or not (ROOT / f).is_file():
+                continue
+            ds, label_names = names[0], ", ".join(f"`{n}`" for n in names)
+            old = run(["git", "-C", str(ROOT), "show", f"{merge_base}:{f}"])
+            if not old.strip():
+                kinds.append(f"- {label_names}: new")
+                continue
+
+            def use(c, ds=ds):  # who still depends on a column that went away or changed
+                files = [f"`{r[0]}:{r[1]}`" for r in q("select file, line from col_uses where dataset=? and column_name=?", ds, c) if r[0] not in changed][:3]
+                feeds = [f"`{r[0]}`" for r in q("select dst from col_edges where src=?", f"{ds}.{c}")][:3]
+                return f"`{c}`" + (f" (read by {', '.join(files)})" if files else "") + (f" (feeds {', '.join(feeds)})" if feeds else "")
+            label, gone, edited, added, clauses = classify_change(signature(old, dialect), signature((ROOT / f).read_text(errors="replace"), dialect))
+            why = [x for x in (f"removes {', '.join(map(use, gone))}" if gone else "", f"changes {', '.join(map(use, edited))}" if edited else "",
+                               f"{' and '.join(clauses)} changed, so rows may differ" if clauses else "", f"adds {', '.join(f'`{c}`' for c in added)}" if added else "") if x]
+            kinds.append(f"- {label_names}: " + {"unknown": "unknown, the SQL doesn't parse", "none": "same output (formatting or comments only)"}.get(label, f"**{label}**: " + "; ".join(why)))
+        if kinds:
+            out += ["**Change type:**", ""] + kinds + [""]
     if weak_all:  # links built from substituted names, bound arguments or patterns, not written plainly: a person should look
         out += [f"**Verify ({len(weak_all)} inferred link{'s' * (len(weak_all) > 1)}):** these were worked out, not read plainly, so check them before relying on the list above:", ""]
         out += [f"- `{s}` → `{d}` (`{v}`)" for s, d, v in sorted(weak_all)[:8]] + ([f"- +{len(weak_all) - 8} more"] if len(weak_all) > 8 else []) + [""]

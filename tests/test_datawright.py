@@ -205,7 +205,23 @@ def cli(*args):
     return out.getvalue()
 
 
+def check_change_types():
+    """Breaking or not, from the SQL alone (the labels SQLMesh uses)."""
+    def kind(a, b):
+        return datawright.classify_change(datawright.signature(a, "duckdb"), datawright.signature(b, "duckdb"))
+    base = "create table t as select a, b + 1 as c from s where a > 0"
+    assert kind(base, "create table t as select  a,\n b+1 as c  from s where a>0")[0] == "none"
+    label, _, _, added, _ = kind(base, "create table t as select a, b + 1 as c, d from s where a > 0")
+    assert (label, added) == ("non-breaking", ["d"])
+    assert kind(base, "create table t as select a from s where a > 0")[:2] == ("breaking", ["c"])
+    assert kind(base, "create table t as select a, b + 2 as c from s where a > 0")[:3] == ("breaking", [], ["c"])
+    assert kind(base, "create table t as select a, b + 1 as c from s where a > 1")[4] == ["WHERE"]
+    assert kind(base, "create table t as select a, b + 1 as c from s join u using (a) where a > 0")[4] == ["JOIN"]
+    assert kind(base, "create table t as select from from where")[0] == "unknown"
+
+
 def main():
+    check_change_types()
     assert datawright.strip_jinja("{{ ref('pkg', 'm') }} {{ source('s', 't') }} {% if x %}a{% endif %}") == "m s.t  a "
     # dbt selectors, the way dbt reads them: union across tokens, intersection within commas, + and n+ for graph hops
     assert datawright.dbt_args("build -s 'tag:a+ stg_x' --exclude tag:b --target dev") == (["tag:a+", "stg_x"], ["tag:b"])
@@ -547,6 +563,7 @@ def main():
         cli("review", "--base", "HEAD~1", "--strict")
     report = cli("review", "--base", "HEAD~1")
     assert "```mermaid" in report and "classDef changed" in report, report  # the graph of changed tables and what they reach
+    assert "**Change type:**" in report and "`mart.revenue_daily`: **breaking**: changes `" in report, report  # sum(p.amount) - 0 edits an existing column
     assert "text:" not in report, "parse errors never carry the SQL's text (sqlglot's token reprs quote it)"
     for text in ("## Data impact of `CMS-1234-revenue-refunds`", "`pipelines/revenue.sql` | etl.build_revenue `timedelta(hours=4)` |",
                  "mart.top_days", "bi.revenue_dashboard (openlineage)", "`reports/weekly.py`", "Refunds land three days late",

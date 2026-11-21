@@ -17,7 +17,7 @@ From [docs/landscape.md](docs/landscape.md): what Uber, Airbnb, Monzo and tools 
 
 | Item | Borrowed from | Done when |
 |---|---|---|
-| Breaking-change labels in `review` | SQLMesh | Each changed table and column is labelled breaking or not from its uses, with what to backfill |
+| Breaking-change labels by column | SQLMesh | `review` labels each changed SQL file breaking, non-breaking or unchanged (from the old and new query); next: per-column labels for Python and dbt-versioned models, and what to backfill ranked by downstream tier |
 | More BI tools | Monzo | Tableau (Metadata API) and Power BI (scanner API) through `bi_export.py`; Looker UI dashboards from its API; dashboard view counts so `review` ranks dashboards by use |
 | Data diff by value | Recce, Datafold | `review --diff` compares rows, columns, keys and sums; next, which keys' values changed, and histograms for the columns that moved |
 | Lineage export | OpenLineage, catalogs | datawright's parsed lineage written as OpenLineage events or catalog lineage YAML, replacing hand-written files |
