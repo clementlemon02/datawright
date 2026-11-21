@@ -30,6 +30,19 @@ Agents and reviewers guess. Datawright answers from your repo, with no warehouse
 | What does `status = 2` mean? Ask someone who left. | The card says `2 = approved`, learned from your own `CASE` expressions. |
 | A rerun silently doubles yesterday's rows. | `datawright lint` flags appends with nothing clearing the slice first. |
 
+In a merge request, `datawright review` adds a graph. This is its output for the change in the demo above (dashed arrows are links it inferred):
+
+```mermaid
+flowchart LR
+  n0["staging.orders"]
+  n1["mart.revenue_daily"]
+  n2["mart.customer_ltv"]
+  n0 --> n2
+  n0 --> n1
+  classDef changed fill:#fff3cd,stroke:#d97706,stroke-width:2px
+  class n0 changed
+```
+
 ## What you get
 
 - **Impact on every merge request.** `datawright review` lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
