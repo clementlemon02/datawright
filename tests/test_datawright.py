@@ -74,6 +74,7 @@ FILES = {
     "lake/jobs/copy_many.py": 'def copy(src, dst):\n    spark.table(src).write.saveAsTable(dst)\n\ncopy("raw.a", "stg.a")\ncopy("raw.b", "stg.b")\nfor t in ["c", "d"]:\n    spark.table(f"raw.{t}").write.saveAsTable(f"stg.{t}")\n',
     "lake/config/tables.yaml": "tables:\n  - {name: invoices, schema: finance}\n  - {name: refunds, schema: finance}\n",
     "lake/dags/factory.py": 'import yaml\nfrom pathlib import Path\nfrom airflow import DAG\nfrom airflow.operators.python import PythonOperator\nconf = yaml.safe_load(open(Path(__file__).parent.parent / "config" / "tables.yaml"))\nwith DAG("factory", schedule="@daily") as dag:\n    for t in conf["tables"]:\n        PythonOperator(task_id=f"load_{t[\'name\']}", python_callable=print)\n        spark.table(f"{t[\'schema\']}.{t[\'name\']}_raw").write.saveAsTable(f"{t.get(\'schema\')}.{t[\'name\']}")\n',
+    "lake/jobs/templated.py": 'src = "staging.payments"\nspark.sql(f"insert into mart.tmpl_probe select amount as amt from {src}")\n',
     "lake/jobs/click_job.py": 'import click\n\n@click.command()\n@click.argument("source")\n@click.option("--target", "-t", default="gold.default_out")\ndef main(source, target):\n    spark.table(f"silver.{source}").write.saveAsTable(target)\n',
     "lake/jobs/weekly.py": 'import pandas as pd\ndf = pd.read_sql("select a, b from app.daily where a > 1", eng)\npd.read_sql("select count(*) from app.audit", eng)\ndf.to_sql("weekly", eng, schema="app", if_exists="replace")\n',
     "lake/nb/report.ipynb": '{"cells":[{"cell_type":"code","source":["%%sql\\n","select user_id from nbsrc.events"]},{"cell_type":"code","source":["!echo hi\\n","df.to_sql(\'nb_out\', eng, schema=\'nbrep\')\\n"]}],"metadata":{},"nbformat":4}',
@@ -290,7 +291,7 @@ def main():
               ("customers", "heavy"),  # ref() in a model whose Jinja keeps it from parsing
               ("wmf.webrequest", "web_daily")]:  # ${vars} in Hive SQL
         assert e in edges, f"missing edge {e}: {edges}"
-    assert ("staging.payments.amount", "mart.revenue_daily.revenue") in set(con.execute("select * from col_edges"))
+    assert ("staging.payments.amount", "mart.revenue_daily.revenue") in set(con.execute("select src, dst from col_edges"))
     assert con.execute("select line from readers where dataset='mart.revenue_daily' and file='reports/weekly.py'").fetchone() == (1,)
     assert con.execute("select file, line from datasets where name='mart.revenue_daily'").fetchone() == ("pipelines/revenue.sql", 2)
     assert con.execute("select stale from notes").fetchone()[0].startswith("code changed")
@@ -509,7 +510,7 @@ def main():
     report = cli("savings")
     assert "questions answered: 32" in report and "knowledge captured: 1 notes, 1 datasets described" in report, report
     print(report)
-    edges, cols = set(con.execute("select src, dst, via from edges")), set(con.execute("select * from col_edges"))
+    edges, cols = set(con.execute("select src, dst, via from edges")), set(con.execute("select src, dst from col_edges"))
     for src, dst, via in [("mart.revenue_daily", "bi.revenue_dashboard", "import openlineage"),
                           ("mart.revenue_daily", "reporting.finance_extract", "import datahub"), ("mart.revenue_daily", "ml.revenue_forecast", "import openmetadata")]:
         assert (src, dst, via) in edges, f"missing catalog edge {src} -> {dst}"
@@ -588,10 +589,18 @@ def main():
     except SystemExit as e:
         assert e.code == 1
 
+    # confidence labels: plain SQL is direct, SQL built by substitution is inferred, and a card or the impact list says so
+    with sqlite3.connect(repo / ".data-context/index.db") as c:
+        how = dict(c.execute("select dst, how from col_edges where dst in ('mart.revenue_daily.revenue', 'mart.tmpl_probe.amt')"))
+        assert how == {"mart.revenue_daily.revenue": "direct", "mart.tmpl_probe.amt": "inferred"}, how
+        assert {r[0] for r in c.execute("select how from joins")} <= {"direct", "declared", "inferred"}
+    assert "amt ← staging.payments.amount (inferred)" in cli("card", "mart.tmpl_probe")
+    assert "mart.tmpl_probe.amt (inferred link)" in cli("impact", "staging.payments.amount"), "a column reached only through an inferred link says so"
+
     # the column-lineage cache: a warm build gives what a cold one does, and an edited query is read again
     def col_edges():
         with sqlite3.connect(repo / ".data-context/index.db") as c:
-            return set(c.execute("select * from col_edges"))
+            return set(c.execute("select src, dst from col_edges"))
     cli("build")
     warm = col_edges()
     (repo / ".data-context/cache.json").unlink()

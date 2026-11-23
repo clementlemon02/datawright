@@ -107,7 +107,7 @@ def add_statement(ix, stmt, dialect, file, line, dbt_model, calls):
             ix.dataset(s)
             ix.edge(s, target, via, "inferred" if (file, line) in ix.inferred else "direct")
         if isinstance(select, exp.Query):
-            add_columns(ix, target, select, dialect, sources)
+            add_columns(ix, target, select, dialect, sources, "inferred" if (file, line) in ix.inferred else "direct")
     else:  # a read: who uses which dataset
         for s in sources:
             ix.dataset(s)["uses"] += calls
@@ -295,7 +295,7 @@ def save_lineage_cache():  # only what this build used, so edited or deleted que
         pass
 
 
-def add_columns(ix, target, select, dialect, sources):
+def add_columns(ix, target, select, dialect, sources, how="direct"):
     for c in select.named_selects:
         if c != "*":
             ix.column(target, c)
@@ -305,7 +305,7 @@ def add_columns(ix, target, select, dialect, sources):
     for col, found in nodes.items():
         for table, src_col, same in found:
             if valid(table):
-                ix.col_edges.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))
+                ix.col_edge((f"{table}.{src_col}", f"{target}.{col.lower()}"), how)
                 if same:
                     ix.identity.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))
             elif table is None and sources:  # unqualified column read through `select *`: settle after the whole repo is read

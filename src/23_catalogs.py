@@ -44,7 +44,7 @@ def load_catalog(ix, path):
                     ix.column(out, f["name"], f.get("type"), f.get("description"))
                 for col, f in ((facets.get("columnLineage") or {}).get("fields") or {}).items():
                     for src in f.get("inputFields") or []:
-                        ix.col_edges.add((f"{src['name'].lower()}.{src['field'].lower()}", f"{out}.{col.lower()}"))
+                        ix.col_edge((f"{src['name'].lower()}.{src['field'].lower()}", f"{out}.{col.lower()}"), "declared")
         elif "entityUrn" in d or "aspectName" in d:  # DataHub metadata change proposal
             a = d.get("aspect") or {}
             a = a.get("json") or json.loads(a.get("value") or "{}")
@@ -58,7 +58,7 @@ def load_catalog(ix, path):
                     for s in map(dh_col, g.get("upstreams") or []):
                         for t in map(dh_col, g.get("downstreams") or []):
                             if s[0] and t[0]:
-                                ix.col_edges.add((f"{s[0]}.{s[1]}", f"{t[0]}.{t[1]}"))
+                                ix.col_edge((f"{s[0]}.{s[1]}", f"{t[0]}.{t[1]}"), "declared")
             elif d.get("aspectName") == "schemaMetadata" and dst:
                 for f in a.get("fields") or []:
                     ix.column(dst, re.sub(r"\[[^\]]*\]\.", "", f["fieldPath"]), f.get("nativeDataType"), f.get("description"))
@@ -74,7 +74,7 @@ def load_catalog(ix, path):
                 for c in ((e.get("lineageDetails") or {}).get("columnsLineage")) or []:
                     for f in c.get("fromColumns") or []:
                         if c.get("toColumn"):
-                            ix.col_edges.add((om(f), om(c["toColumn"])))
+                            ix.col_edge((om(f), om(c["toColumn"])), "declared")
         elif "fullyQualifiedName" in d and "columns" in d:  # OpenMetadata table
             t = om(d["fullyQualifiedName"])
             ix.dataset(t, "warehouse", description=d.get("description"))
@@ -106,7 +106,7 @@ def load_imports(ix):
                     ix.edge(s, t, "import warehouse lineage", "declared")
                     sc, tc = pick(r, "source_column", "source_column_name"), pick(r, "target_column", "target_column_name")
                     if sc and tc:
-                        ix.col_edges.add((f"{s}.{sc.lower()}", f"{t}.{tc.lower()}"))
+                        ix.col_edge((f"{s}.{sc.lower()}", f"{t}.{tc.lower()}"), "declared")
             elif kind.startswith("queries"):
                 n = pick(r, "calls", "count", "executions")
                 stmts += extract_sql(pick(r, "query_text", "query", "statement_text", "sql"), None, calls=int(n) if n.isdigit() else 1)

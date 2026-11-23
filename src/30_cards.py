@@ -117,13 +117,13 @@ def card(con, arg, budget):
     if doc_path(name).exists():
         files.add(str(doc_path(name).relative_to(ROOT)))
     feeds = {}
-    for r in q("select src, dst from col_edges where dst like ? order by src", name + ".%"):
-        feeds.setdefault(r["dst"].rsplit(".", 1)[1], []).append(r["src"])
+    for r in q("select src, dst, how from col_edges where dst like ? order by src", name + ".%"):
+        feeds.setdefault(r["dst"].rsplit(".", 1)[1], []).append(r["src"] + (" (inferred)" if r["how"] == "inferred" else ""))
     cols, same, mapped = [], {}, []
     for c in q("select * from columns where dataset=? order by rowid", name):
         cols.append(f"{c['name']}{' ' + c['type'] if c['type'] else ''}")
         srcs = feeds.get(c["name"], [])
-        if len(srcs) == 1 and srcs[0].rsplit(".", 1)[1] == c["name"]:  # copied 1:1, say it once per source table
+        if len(srcs) == 1 and srcs[0].rsplit(".", 1)[1] == c["name"]:  # copied 1:1, say it once per source table (a guessed link carries its label, so it is listed below instead)
             same.setdefault(srcs[0].rsplit(".", 1)[0], []).append(c["name"])
         elif srcs:
             mapped.append(f"{c['name']} ← {', '.join(srcs)}")

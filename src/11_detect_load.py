@@ -157,7 +157,7 @@ def add_records(ix, name, path, records):
         elif "env" in r:  # [NAME, value]: what a deploy-time variable is set to, so names built from it resolve
             ix.env.setdefault(str(r["env"][0]).lower(), str(r["env"][1]).lower())
         elif "column_edge" in r:
-            ix.col_edges.add(tuple(str(x).lower() for x in r["column_edge"]))
+            ix.col_edge(tuple(str(x).lower() for x in r["column_edge"]), "declared")
         elif "run" in r and r["run"].get("dataset"):  # schedules a table defined elsewhere: placed on its producer after the build
             g = r["run"]
             ix.dataset_runs.append((str(g["dataset"]).lower(), g["dag"], g.get("task") or "", g.get("schedule") or "manual", f"{path}:{line}"))

@@ -151,9 +151,11 @@ def join_path(con, a, b):
     q = lambda sql, *args: con.execute(sql, args).fetchall()
     a, b = resolve(con, a), resolve(con, b)
     graph = {}
-    for r in q("""select left_dataset, left_column, right_dataset, right_column, count(distinct file || ':' || line) n from joins group by 1, 2, 3, 4"""):
-        graph.setdefault(r[0], []).append((r[2], r[1], r[3], r[4], "written"))
-        graph.setdefault(r[2], []).append((r[0], r[3], r[1], r[4], "written"))
+    for r in q("""select left_dataset, left_column, right_dataset, right_column, count(distinct file || ':' || line) n, sum(how != 'inferred') solid
+                   from joins group by 1, 2, 3, 4"""):
+        why = "written" if r[5] else "written only in SQL built by substitution or binding"  # inferred: check it
+        graph.setdefault(r[0], []).append((r[2], r[1], r[3], r[4], why))
+        graph.setdefault(r[2], []).append((r[0], r[3], r[1], r[4], why))
     def search(graph):  # breadth first, the most-used join first at each step
         best, frontier = {a: []}, [a]
         for _ in range(4):
@@ -194,7 +196,7 @@ def join_path(con, a, b):
         print(f"no join path between {a} and {b} in the code within 4 hops. Their columns: datawright card {a}, datawright card {b}")
         return a, set()
     alias = {a: "t0"}
-    inferred = sum(1 for *_, used, why in best[b] if not used)
+    inferred = sum(1 for *_, used, why in best[b] if not used or why != "written")
     print(f"-- {a} to {b}: {len(best[b])} join{'s' if len(best[b]) != 1 else ''}, "
           + (f"{inferred} of them inferred, not written in the code: check those" if inferred else "as the code joins them"))
     print(f"select …\nfrom {a} t0")
@@ -210,6 +212,8 @@ def join_path(con, a, b):
                 right = f"cast({right} as {ty.lower()})"
             note = f"; {x}.{mine} is {tx}, {y}.{theirs} is {ty}"
         how = f"written in {used} quer{'y' if used == 1 else 'ies'}" if used else why  # not nested in the f-string: Python 3.10 and 3.11
+        if used and why != "written":
+            how += f" ({why}, check it)"
         print(f"join {y} t{i} on {left} = {right}  -- {how}{note}")
     return a, set()
 
@@ -327,7 +331,7 @@ def impact(con, arg, budget=1500):
         down = sorted(reach(ds, lambda n: [r[0] for r in q("select dst from edges where src=?", n)], 9))
         out = [f"impact of changing {ds}"]
     tags = {r[0]: r[1][7:] for r in q("select dst, via from edges where via like 'import %'")}
-    weak = weak_links(con, [ds], down)[0] if not col else set()
+    weak = weak_links(con, [f"{ds}.{col}" if col else ds], down, table=not col)[0]
     files = {r["file"] for r in uses + stars if r["file"] != "query log"} | {r[0] for r in q("select file from writers where dataset=?", ds)}
     sections = [out + [f"owner: {d['owner']}"] * bool(d and d["owner"]),
                 capped("written by (change these first)", writers, 10, f"datawright card {ds}"),
@@ -362,7 +366,7 @@ def mermaid_graph(nodes, edges, changed=()):
 
 def walk_edges(con, name, up, down, table=True, cap=40):
     """(nodes, edges) within `up` hops upstream and `down` hops downstream of `name`, `name` first; at most `cap` nodes."""
-    sql = "select src, dst, how from edges" if table else "select src, dst, 'direct' from col_edges"
+    sql = "select src, dst, how from edges" if table else "select src, dst, how from col_edges"
     rows = [tuple(r) for r in con.execute(sql)]
     nodes, edges = [name], set()
     for depth, side in ((up, 1), (down, 0)):
@@ -376,10 +380,10 @@ def walk_edges(con, name, up, down, table=True, cap=40):
     return nodes, sorted(e for e in edges if e[0] in nodes and e[1] in nodes)
 
 
-def weak_links(con, roots, down):
+def weak_links(con, roots, down, table=True):
     """(nodes in `down` that are reached only through inferred links, [(src, dst, via)] of the inferred links among them)."""
     inside = set(roots) | set(down)
-    rows = [r for r in con.execute("select src, dst, how, via from edges") if r[0] in inside and r[1] in down]
+    rows = [r for r in con.execute("select src, dst, how, via from edges" if table else "select src, dst, how, '' from col_edges") if r[0] in inside and r[1] in down]
     incoming = {}
     for s, d, how, via in rows:
         incoming.setdefault(d, []).append(how)

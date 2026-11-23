@@ -192,7 +192,8 @@ def build(dialect=None):
     con.executemany("insert into contracts values (?,?,?,?,?)", [(final(ds), c, typ, req, src) for ds, c, typ, req, src in ix.contracts])
     con.executemany("insert or ignore into columns values (?,?,?,?)", [(final(ds), c, t, desc) for (ds, c), (t, desc) in ix.cols.items()])
     con.executemany("insert or ignore into edges values (?,?,?,?)", [(final(s), final(d), v, ix.how.get((s, d), "direct")) for (s, d), v in ix.edges.items() if final(s) != final(d)])
-    con.executemany("insert or ignore into col_edges values (?,?)", [(split(s), split(d)) for s, d in ix.col_edges])
+    con.executemany("insert or ignore into col_edges values (?,?,?)", sorted(((split(s), split(d), ix.col_how.get((s, d), "direct")) for s, d in ix.col_edges),
+                                                                          key=lambda r: (HOW_RANK[r[2]], r)))  # the surest evidence first: the first row wins
     con.executemany("insert or ignore into readers values (?,?,?)", [(final(ds), f, ln) for (ds, f), ln in ix.readers.items()])
     con.executemany("insert or ignore into writers values (?,?,?)", [(final(ds), f, ln) for (ds, f), ln in ix.writers.items()])
     con.executemany("insert into notes values (?,?,?,?,?,?,?)", notes)
@@ -239,7 +240,7 @@ def build(dialect=None):
                 rows.add((final(ds), col, cl, w, ln))
     con.executemany("insert into clauses values (?,?,?,?,?)", sorted(rows))
     jrows = {(final(a), ac, final(b), bc, f, ln) for a, ac, b, bc, f, ln in ix.joins if final(a) != final(b)}
-    con.executemany("insert into joins values (?,?,?,?,?,?)", sorted(jrows))
+    con.executemany("insert into joins values (?,?,?,?,?,?,?)", sorted((*j, "declared" if not j[5] else "inferred" if (j[4], j[5]) in ix.inferred else "direct") for j in jrows))
     keyed = {(final(d), c, s) for d, c, s in ix.keys} | {(n, d["key"].strip().lower(), "set") for n, d in datasets.items()
                                                         if d.get("key") and "," not in d["key"]}
     con.executemany("insert into keys values (?,?,?)", sorted(keyed))

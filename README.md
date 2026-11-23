@@ -46,7 +46,7 @@ flowchart LR
 ## What you get
 
 - **Impact on every merge request.** `datawright review` labels each change breaking or non-breaking (dropped or recomputed column, changed filter or join, or just an added column), lists changed tables, the Airflow task that runs each, what's downstream (tables, Looker, Superset and Metabase dashboards), broken data contracts, and unsafe patterns.
-- **Lineage down to the column.** Which columns feed which. Every table card names the file and line that writes and reads it, and links that were worked out rather than read plainly are marked `(inferred)`.
+- **Lineage down to the column.** Which columns feed which. Every table card names the file and line that writes and reads it, and links that were worked out rather than read plainly (table links, column links and joins alike) are marked `(inferred)`.
 - **Join paths and meanings.** How tables join as your code joins them, what codes like `status = 2` mean, which key columns nothing uses any more.
 - **Any agent can use it.** A command line, plus an MCP server (`datawright serve`) for clients with no shell.
 - **11 agent skills on top** (set up, build, change, debug, test, review, optimize, on-call, tickets) that teach your agent to use it like a senior data engineer.

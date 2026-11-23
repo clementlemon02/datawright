@@ -66,13 +66,13 @@ create table tests(dataset text, source text);
 create table contracts(dataset text, column_name text, type text, required int, source text);
 create table columns(dataset text, name text, type text, description text, primary key(dataset, name));
 create table edges(src text, dst text, via text, how text, primary key(src, dst));
-create table col_edges(src text, dst text, primary key(src, dst));
+create table col_edges(src text, dst text, how text, primary key(src, dst));
 create table readers(dataset text, file text, line int, primary key(dataset, file));
 create table writers(dataset text, file text, line int, primary key(dataset, file));
 create table modes(dataset text, file text, line int, mode text);
 create table clauses(dataset text, column_name text, clause text, file text, line int);
 create table layout(dataset text, kind text, columns text, file text, line int);
-create table joins(left_dataset text, left_column text, right_dataset text, right_column text, file text, line int);
+create table joins(left_dataset text, left_column text, right_dataset text, right_column text, file text, line int, how text);
 create table keys(dataset text, column_name text, source text);
 create table concepts(concept text, dataset text, column_name text, role text, confirmed int, evidence int);
 create table value_maps(dataset text, column_name text, value text, label text, how text, file text, line int);
@@ -112,6 +112,7 @@ class Index:
         self.joins, self.identity, self.keys = set(), set(), set()  # join pairs; pass-through renames (src, dst); declared keys
         self.value_maps, self.conversions, self.pending_maps = set(), set(), []  # what codes mean (CASE, DECODE); unit, epoch, time-zone changes
         self.how, self.inferred = {}, set()  # edge -> direct | declared | inferred; (file, line) of SQL built by substitution or binding
+        self.col_how = {}  # column edge -> direct | declared | inferred, like `how` for tables
         self.entities = {}  # dbt semantic-model entity -> [(model.column, type)]
 
     def issue(self, file, line, error):
@@ -123,7 +124,7 @@ class Index:
         for dst, sources, col in self.pending:
             owners = sources if len(sources) == 1 else [s for s in sources if (s, col) in self.cols]
             if len(owners) == 1:
-                self.col_edges.add((f"{owners[0]}.{col}", dst))
+                self.col_edge((f"{owners[0]}.{col}", dst), "inferred")  # a guess from the only source, or the one that has the column
         for sources, col, *rest in self.pending_maps:
             owners = [s for s in sources if (s, col) in self.cols]
             if len(owners) == 1:
@@ -149,6 +150,11 @@ class Index:
             return
         c = self.cols.setdefault((ds, col.lower()), [None, None])
         c[0], c[1] = c[0] or typ, c[1] or desc
+
+    def col_edge(self, pair, how="direct"):
+        self.col_edges.add(pair)
+        if HOW_RANK[how] < HOW_RANK[self.col_how.get(pair, "inferred")] or pair not in self.col_how:
+            self.col_how[pair] = how
 
     def edge(self, src, dst, via, how="direct"):
         """how sure: direct (written plainly in code), declared (a connector or import says so), inferred (substituted, bound or pattern-matched)."""
@@ -373,7 +379,7 @@ def add_records(ix, name, path, records):
         elif "env" in r:  # [NAME, value]: what a deploy-time variable is set to, so names built from it resolve
             ix.env.setdefault(str(r["env"][0]).lower(), str(r["env"][1]).lower())
         elif "column_edge" in r:
-            ix.col_edges.add(tuple(str(x).lower() for x in r["column_edge"]))
+            ix.col_edge(tuple(str(x).lower() for x in r["column_edge"]), "declared")
         elif "run" in r and r["run"].get("dataset"):  # schedules a table defined elsewhere: placed on its producer after the build
             g = r["run"]
             ix.dataset_runs.append((str(g["dataset"]).lower(), g["dag"], g.get("task") or "", g.get("schedule") or "manual", f"{path}:{line}"))
@@ -513,7 +519,7 @@ def add_statement(ix, stmt, dialect, file, line, dbt_model, calls):
             ix.dataset(s)
             ix.edge(s, target, via, "inferred" if (file, line) in ix.inferred else "direct")
         if isinstance(select, exp.Query):
-            add_columns(ix, target, select, dialect, sources)
+            add_columns(ix, target, select, dialect, sources, "inferred" if (file, line) in ix.inferred else "direct")
     else:  # a read: who uses which dataset
         for s in sources:
             ix.dataset(s)["uses"] += calls
@@ -701,7 +707,7 @@ def save_lineage_cache():  # only what this build used, so edited or deleted que
         pass
 
 
-def add_columns(ix, target, select, dialect, sources):
+def add_columns(ix, target, select, dialect, sources, how="direct"):
     for c in select.named_selects:
         if c != "*":
             ix.column(target, c)
@@ -711,7 +717,7 @@ def add_columns(ix, target, select, dialect, sources):
     for col, found in nodes.items():
         for table, src_col, same in found:
             if valid(table):
-                ix.col_edges.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))
+                ix.col_edge((f"{table}.{src_col}", f"{target}.{col.lower()}"), how)
                 if same:
                     ix.identity.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))
             elif table is None and sources:  # unqualified column read through `select *`: settle after the whole repo is read
@@ -1554,7 +1560,7 @@ def load_catalog(ix, path):
                     ix.column(out, f["name"], f.get("type"), f.get("description"))
                 for col, f in ((facets.get("columnLineage") or {}).get("fields") or {}).items():
                     for src in f.get("inputFields") or []:
-                        ix.col_edges.add((f"{src['name'].lower()}.{src['field'].lower()}", f"{out}.{col.lower()}"))
+                        ix.col_edge((f"{src['name'].lower()}.{src['field'].lower()}", f"{out}.{col.lower()}"), "declared")
         elif "entityUrn" in d or "aspectName" in d:  # DataHub metadata change proposal
             a = d.get("aspect") or {}
             a = a.get("json") or json.loads(a.get("value") or "{}")
@@ -1568,7 +1574,7 @@ def load_catalog(ix, path):
                     for s in map(dh_col, g.get("upstreams") or []):
                         for t in map(dh_col, g.get("downstreams") or []):
                             if s[0] and t[0]:
-                                ix.col_edges.add((f"{s[0]}.{s[1]}", f"{t[0]}.{t[1]}"))
+                                ix.col_edge((f"{s[0]}.{s[1]}", f"{t[0]}.{t[1]}"), "declared")
             elif d.get("aspectName") == "schemaMetadata" and dst:
                 for f in a.get("fields") or []:
                     ix.column(dst, re.sub(r"\[[^\]]*\]\.", "", f["fieldPath"]), f.get("nativeDataType"), f.get("description"))
@@ -1584,7 +1590,7 @@ def load_catalog(ix, path):
                 for c in ((e.get("lineageDetails") or {}).get("columnsLineage")) or []:
                     for f in c.get("fromColumns") or []:
                         if c.get("toColumn"):
-                            ix.col_edges.add((om(f), om(c["toColumn"])))
+                            ix.col_edge((om(f), om(c["toColumn"])), "declared")
         elif "fullyQualifiedName" in d and "columns" in d:  # OpenMetadata table
             t = om(d["fullyQualifiedName"])
             ix.dataset(t, "warehouse", description=d.get("description"))
@@ -1616,7 +1622,7 @@ def load_imports(ix):
                     ix.edge(s, t, "import warehouse lineage", "declared")
                     sc, tc = pick(r, "source_column", "source_column_name"), pick(r, "target_column", "target_column_name")
                     if sc and tc:
-                        ix.col_edges.add((f"{s}.{sc.lower()}", f"{t}.{tc.lower()}"))
+                        ix.col_edge((f"{s}.{sc.lower()}", f"{t}.{tc.lower()}"), "declared")
             elif kind.startswith("queries"):
                 n = pick(r, "calls", "count", "executions")
                 stmts += extract_sql(pick(r, "query_text", "query", "statement_text", "sql"), None, calls=int(n) if n.isdigit() else 1)
@@ -2000,7 +2006,8 @@ def build(dialect=None):
     con.executemany("insert into contracts values (?,?,?,?,?)", [(final(ds), c, typ, req, src) for ds, c, typ, req, src in ix.contracts])
     con.executemany("insert or ignore into columns values (?,?,?,?)", [(final(ds), c, t, desc) for (ds, c), (t, desc) in ix.cols.items()])
     con.executemany("insert or ignore into edges values (?,?,?,?)", [(final(s), final(d), v, ix.how.get((s, d), "direct")) for (s, d), v in ix.edges.items() if final(s) != final(d)])
-    con.executemany("insert or ignore into col_edges values (?,?)", [(split(s), split(d)) for s, d in ix.col_edges])
+    con.executemany("insert or ignore into col_edges values (?,?,?)", sorted(((split(s), split(d), ix.col_how.get((s, d), "direct")) for s, d in ix.col_edges),
+                                                                          key=lambda r: (HOW_RANK[r[2]], r)))  # the surest evidence first: the first row wins
     con.executemany("insert or ignore into readers values (?,?,?)", [(final(ds), f, ln) for (ds, f), ln in ix.readers.items()])
     con.executemany("insert or ignore into writers values (?,?,?)", [(final(ds), f, ln) for (ds, f), ln in ix.writers.items()])
     con.executemany("insert into notes values (?,?,?,?,?,?,?)", notes)
@@ -2047,7 +2054,7 @@ def build(dialect=None):
                 rows.add((final(ds), col, cl, w, ln))
     con.executemany("insert into clauses values (?,?,?,?,?)", sorted(rows))
     jrows = {(final(a), ac, final(b), bc, f, ln) for a, ac, b, bc, f, ln in ix.joins if final(a) != final(b)}
-    con.executemany("insert into joins values (?,?,?,?,?,?)", sorted(jrows))
+    con.executemany("insert into joins values (?,?,?,?,?,?,?)", sorted((*j, "declared" if not j[5] else "inferred" if (j[4], j[5]) in ix.inferred else "direct") for j in jrows))
     keyed = {(final(d), c, s) for d, c, s in ix.keys} | {(n, d["key"].strip().lower(), "set") for n, d in datasets.items()
                                                         if d.get("key") and "," not in d["key"]}
     con.executemany("insert into keys values (?,?,?)", sorted(keyed))
@@ -2289,13 +2296,13 @@ def card(con, arg, budget):
     if doc_path(name).exists():
         files.add(str(doc_path(name).relative_to(ROOT)))
     feeds = {}
-    for r in q("select src, dst from col_edges where dst like ? order by src", name + ".%"):
-        feeds.setdefault(r["dst"].rsplit(".", 1)[1], []).append(r["src"])
+    for r in q("select src, dst, how from col_edges where dst like ? order by src", name + ".%"):
+        feeds.setdefault(r["dst"].rsplit(".", 1)[1], []).append(r["src"] + (" (inferred)" if r["how"] == "inferred" else ""))
     cols, same, mapped = [], {}, []
     for c in q("select * from columns where dataset=? order by rowid", name):
         cols.append(f"{c['name']}{' ' + c['type'] if c['type'] else ''}")
         srcs = feeds.get(c["name"], [])
-        if len(srcs) == 1 and srcs[0].rsplit(".", 1)[1] == c["name"]:  # copied 1:1, say it once per source table
+        if len(srcs) == 1 and srcs[0].rsplit(".", 1)[1] == c["name"]:  # copied 1:1, say it once per source table (a guessed link carries its label, so it is listed below instead)
             same.setdefault(srcs[0].rsplit(".", 1)[0], []).append(c["name"])
         elif srcs:
             mapped.append(f"{c['name']} ← {', '.join(srcs)}")
@@ -2642,9 +2649,11 @@ def join_path(con, a, b):
     q = lambda sql, *args: con.execute(sql, args).fetchall()
     a, b = resolve(con, a), resolve(con, b)
     graph = {}
-    for r in q("""select left_dataset, left_column, right_dataset, right_column, count(distinct file || ':' || line) n from joins group by 1, 2, 3, 4"""):
-        graph.setdefault(r[0], []).append((r[2], r[1], r[3], r[4], "written"))
-        graph.setdefault(r[2], []).append((r[0], r[3], r[1], r[4], "written"))
+    for r in q("""select left_dataset, left_column, right_dataset, right_column, count(distinct file || ':' || line) n, sum(how != 'inferred') solid
+                   from joins group by 1, 2, 3, 4"""):
+        why = "written" if r[5] else "written only in SQL built by substitution or binding"  # inferred: check it
+        graph.setdefault(r[0], []).append((r[2], r[1], r[3], r[4], why))
+        graph.setdefault(r[2], []).append((r[0], r[3], r[1], r[4], why))
     def search(graph):  # breadth first, the most-used join first at each step
         best, frontier = {a: []}, [a]
         for _ in range(4):
@@ -2685,7 +2694,7 @@ def join_path(con, a, b):
         print(f"no join path between {a} and {b} in the code within 4 hops. Their columns: datawright card {a}, datawright card {b}")
         return a, set()
     alias = {a: "t0"}
-    inferred = sum(1 for *_, used, why in best[b] if not used)
+    inferred = sum(1 for *_, used, why in best[b] if not used or why != "written")
     print(f"-- {a} to {b}: {len(best[b])} join{'s' if len(best[b]) != 1 else ''}, "
           + (f"{inferred} of them inferred, not written in the code: check those" if inferred else "as the code joins them"))
     print(f"select …\nfrom {a} t0")
@@ -2701,6 +2710,8 @@ def join_path(con, a, b):
                 right = f"cast({right} as {ty.lower()})"
             note = f"; {x}.{mine} is {tx}, {y}.{theirs} is {ty}"
         how = f"written in {used} quer{'y' if used == 1 else 'ies'}" if used else why  # not nested in the f-string: Python 3.10 and 3.11
+        if used and why != "written":
+            how += f" ({why}, check it)"
         print(f"join {y} t{i} on {left} = {right}  -- {how}{note}")
     return a, set()
 
@@ -2818,7 +2829,7 @@ def impact(con, arg, budget=1500):
         down = sorted(reach(ds, lambda n: [r[0] for r in q("select dst from edges where src=?", n)], 9))
         out = [f"impact of changing {ds}"]
     tags = {r[0]: r[1][7:] for r in q("select dst, via from edges where via like 'import %'")}
-    weak = weak_links(con, [ds], down)[0] if not col else set()
+    weak = weak_links(con, [f"{ds}.{col}" if col else ds], down, table=not col)[0]
     files = {r["file"] for r in uses + stars if r["file"] != "query log"} | {r[0] for r in q("select file from writers where dataset=?", ds)}
     sections = [out + [f"owner: {d['owner']}"] * bool(d and d["owner"]),
                 capped("written by (change these first)", writers, 10, f"datawright card {ds}"),
@@ -2853,7 +2864,7 @@ def mermaid_graph(nodes, edges, changed=()):
 
 def walk_edges(con, name, up, down, table=True, cap=40):
     """(nodes, edges) within `up` hops upstream and `down` hops downstream of `name`, `name` first; at most `cap` nodes."""
-    sql = "select src, dst, how from edges" if table else "select src, dst, 'direct' from col_edges"
+    sql = "select src, dst, how from edges" if table else "select src, dst, how from col_edges"
     rows = [tuple(r) for r in con.execute(sql)]
     nodes, edges = [name], set()
     for depth, side in ((up, 1), (down, 0)):
@@ -2867,10 +2878,10 @@ def walk_edges(con, name, up, down, table=True, cap=40):
     return nodes, sorted(e for e in edges if e[0] in nodes and e[1] in nodes)
 
 
-def weak_links(con, roots, down):
+def weak_links(con, roots, down, table=True):
     """(nodes in `down` that are reached only through inferred links, [(src, dst, via)] of the inferred links among them)."""
     inside = set(roots) | set(down)
-    rows = [r for r in con.execute("select src, dst, how, via from edges") if r[0] in inside and r[1] in down]
+    rows = [r for r in con.execute("select src, dst, how, via from edges" if table else "select src, dst, how, '' from col_edges") if r[0] in inside and r[1] in down]
     incoming = {}
     for s, d, how, via in rows:
         incoming.setdefault(d, []).append(how)
@@ -3749,7 +3760,7 @@ def review(con, base=None, strict=False, diff=False, where=""):
 
             def use(c, ds=ds):  # who still depends on a column that went away or changed
                 files = [f"`{r[0]}:{r[1]}`" for r in q("select file, line from col_uses where dataset=? and column_name=?", ds, c) if r[0] not in changed][:3]
-                feeds = [f"`{r[0]}`" for r in q("select dst from col_edges where src=?", f"{ds}.{c}")][:3]
+                feeds = [f"`{r[0]}`" + (" (inferred)" if r[1] == "inferred" else "") for r in q("select dst, how from col_edges where src=?", f"{ds}.{c}")][:3]
                 return f"`{c}`" + (f" (read by {', '.join(files)})" if files else "") + (f" (feeds {', '.join(feeds)})" if feeds else "")
             label, gone, edited, added, clauses = classify_change(signature(old, dialect), signature((ROOT / f).read_text(errors="replace"), dialect))
             why = [x for x in (f"removes {', '.join(map(use, gone))}" if gone else "", f"changes {', '.join(map(use, edited))}" if edited else "",

@@ -187,7 +187,7 @@ def review(con, base=None, strict=False, diff=False, where=""):
 
             def use(c, ds=ds):  # who still depends on a column that went away or changed
                 files = [f"`{r[0]}:{r[1]}`" for r in q("select file, line from col_uses where dataset=? and column_name=?", ds, c) if r[0] not in changed][:3]
-                feeds = [f"`{r[0]}`" for r in q("select dst from col_edges where src=?", f"{ds}.{c}")][:3]
+                feeds = [f"`{r[0]}`" + (" (inferred)" if r[1] == "inferred" else "") for r in q("select dst, how from col_edges where src=?", f"{ds}.{c}")][:3]
                 return f"`{c}`" + (f" (read by {', '.join(files)})" if files else "") + (f" (feeds {', '.join(feeds)})" if feeds else "")
             label, gone, edited, added, clauses = classify_change(signature(old, dialect), signature((ROOT / f).read_text(errors="replace"), dialect))
             why = [x for x in (f"removes {', '.join(map(use, gone))}" if gone else "", f"changes {', '.join(map(use, edited))}" if edited else "",

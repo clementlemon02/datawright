@@ -32,7 +32,7 @@ Answer data questions from a compiled index, not by exploring. A SQL parser buil
 | Health, savings | `… lint`, `… savings` |
 | Best practices | `… lint` checks the whole repo, and `review` the changed files: appends a rerun would duplicate (StarRocks and Doris key tables, which upsert, are exempt; dbt incremental models need a `unique_key`), tables several DAGs write, `INSERT … SELECT *`, lineage cycles, tables read before their upstream is built or built only by hand, lineage running backwards through the warehouse layers (`ods → dwd → dws → ads`, `staging → intermediate → marts`, `bronze → silver → gold`, or `layers:` in `config.yml`), secrets in code (reported by place, never by value; `review --strict` blocks on them), and concept drift: a column holding a known concept under another kind of type, or under a respelled or unlisted name (`playerid` beside `player_id`; list real role names like `referrer_id` under `roles:` in `concepts.yml`) |
 
-For anything else, query `.data-context/index.db` with SQL: tables `datasets`, `columns`, `edges`, `col_edges`, `readers`, `notes`, `changes`, `glossary`, `tests`, `contracts`.
+For anything else, query `.data-context/index.db` with SQL: tables `datasets`, `columns`, `edges`, `col_edges` (both carry `how`: direct, declared or inferred), `joins`, `readers`, `notes`, `changes`, `glossary`, `tests`, `contracts`.
 
 ## As an MCP server
 

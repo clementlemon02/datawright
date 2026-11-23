@@ -13,6 +13,7 @@ class Index:
         self.joins, self.identity, self.keys = set(), set(), set()  # join pairs; pass-through renames (src, dst); declared keys
         self.value_maps, self.conversions, self.pending_maps = set(), set(), []  # what codes mean (CASE, DECODE); unit, epoch, time-zone changes
         self.how, self.inferred = {}, set()  # edge -> direct | declared | inferred; (file, line) of SQL built by substitution or binding
+        self.col_how = {}  # column edge -> direct | declared | inferred, like `how` for tables
         self.entities = {}  # dbt semantic-model entity -> [(model.column, type)]
 
     def issue(self, file, line, error):
@@ -24,7 +25,7 @@ class Index:
         for dst, sources, col in self.pending:
             owners = sources if len(sources) == 1 else [s for s in sources if (s, col) in self.cols]
             if len(owners) == 1:
-                self.col_edges.add((f"{owners[0]}.{col}", dst))
+                self.col_edge((f"{owners[0]}.{col}", dst), "inferred")  # a guess from the only source, or the one that has the column
         for sources, col, *rest in self.pending_maps:
             owners = [s for s in sources if (s, col) in self.cols]
             if len(owners) == 1:
@@ -50,6 +51,11 @@ class Index:
             return
         c = self.cols.setdefault((ds, col.lower()), [None, None])
         c[0], c[1] = c[0] or typ, c[1] or desc
+
+    def col_edge(self, pair, how="direct"):
+        self.col_edges.add(pair)
+        if HOW_RANK[how] < HOW_RANK[self.col_how.get(pair, "inferred")] or pair not in self.col_how:
+            self.col_how[pair] = how
 
     def edge(self, src, dst, via, how="direct"):
         """how sure: direct (written plainly in code), declared (a connector or import says so), inferred (substituted, bound or pattern-matched)."""
