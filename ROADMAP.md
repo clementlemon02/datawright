@@ -49,7 +49,7 @@ From [docs/landscape.md](docs/landscape.md): what Uber, Airbnb, Monzo and tools 
 | Item | Why | Done when |
 |---|---|---|
 | Ticket-driven work, end to end | First real run (Jira, read-only) found the open-ticket query, title-only tickets, work filed under a typo'd key, and non-data tickets; all now in the skill | One ticket taken from read to an approved comment and merged change |
-| Incremental build | Full rebuild every time; 11 s at 1,500 models is fine, 10k+ isn't | Parses cached by file hash; rebuild after one changed file under a second |
+| Faster rebuilds | Column lineage, the slow part, is cached by query hash (`.data-context/cache.json`): a 2,000-file repo rebuilds in 5 s instead of 20 s. A first build is unchanged | Cache the rest per file (needs cross-file state keyed in) for under a second on one changed file |
 
 ## Later, if users ask
 

@@ -588,6 +588,26 @@ def main():
     except SystemExit as e:
         assert e.code == 1
 
+    # the column-lineage cache: a warm build gives what a cold one does, and an edited query is read again
+    def col_edges():
+        with sqlite3.connect(repo / ".data-context/index.db") as c:
+            return set(c.execute("select * from col_edges"))
+    cli("build")
+    warm = col_edges()
+    (repo / ".data-context/cache.json").unlink()
+    cli("build")
+    assert col_edges() == warm and (repo / ".data-context/cache.json").exists()
+    probe = repo / "pipelines/cache_probe.sql"
+    probe.write_text("create table mart.cache_probe as select a as x from raw.cache_t;\n")
+    cli("build")
+    assert ("raw.cache_t.a", "mart.cache_probe.x") in col_edges()
+    probe.write_text("create table mart.cache_probe as select b as x from raw.cache_t;\n")
+    cli("build")
+    assert ("raw.cache_t.b", "mart.cache_probe.x") in col_edges() and ("raw.cache_t.a", "mart.cache_probe.x") not in col_edges()
+    probe.unlink()
+    cli("build")
+    assert col_edges() == warm
+
     # updates: a newer copy of the skill installed in the repo is found, offered after a build, and copied in
     newer = repo / ".claude/skills/data-context/scripts/datawright.py"
     newer.parent.mkdir(parents=True)

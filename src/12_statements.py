@@ -236,20 +236,24 @@ def add_meanings(ix, stmt, target, sources, file, line):
             ix.conversions.add((ds, src.name.lower(), target, out, kind, detail, file, line))
 
 
-def add_columns(ix, target, select, dialect, sources):
+LINEAGE = {"old": {}, "new": {}}  # column lineage by hash of the select: the slow part of a build, and a pure function of the SQL
+
+
+def column_sources(select, dialect):
+    """{output column: [(source table or None, source column, passed through plain)]}, or None when sqlglot can't resolve it."""
+    import hashlib
     from sqlglot import exp
     from sqlglot.lineage import lineage
-    for c in select.named_selects:
-        if c != "*":
-            ix.column(target, c)
+    import sqlglot
+    key = hashlib.sha1(f"{sqlglot.__version__}|{dialect}|{select.sql(dialect=dialect)}".encode()).hexdigest()
+    hit = LINEAGE["old"].get(key, LINEAGE["new"].get(key, False))
+    if hit is not False:
+        LINEAGE["new"][key] = hit
+        return hit
     if isinstance(select, exp.Select):  # these clauses can't change where a column comes from, and their aliases trip the resolver
         select = select.copy()
         for clause in ("group", "order", "having", "qualify"):
             select.set(clause, None)
-    try:
-        nodes = lineage(None, select, None, dialect=dialect)
-    except Exception:
-        return
 
     def plain(node):  # a column passed through, maybe renamed: no function, cast or arithmetic on the way
         e = node.expression
@@ -267,8 +271,39 @@ def add_columns(ix, target, select, dialect, sources):
                 yield None, last, same
         for d in node.downstream:
             yield from leaves(d, last, same)
-    for col, node in nodes.items():
-        for table, src_col, same in leaves(node, col.lower()):
+    try:
+        nodes = lineage(None, select, None, dialect=dialect)
+        out = {col: list(leaves(node, col.lower())) for col, node in nodes.items()}
+    except Exception:
+        out = None
+    LINEAGE["new"][key] = out
+    return out
+
+
+def load_lineage_cache():
+    LINEAGE["new"] = {}
+    try:
+        LINEAGE["old"] = {k: v and {c: [tuple(r) for r in rs] for c, rs in v.items()} for k, v in json.loads((HOME / "cache.json").read_text()).items()}
+    except Exception:
+        LINEAGE["old"] = {}
+
+
+def save_lineage_cache():  # only what this build used, so edited or deleted queries drop out
+    try:
+        (HOME / "cache.json").write_text(json.dumps(LINEAGE["new"]))
+    except OSError:
+        pass
+
+
+def add_columns(ix, target, select, dialect, sources):
+    for c in select.named_selects:
+        if c != "*":
+            ix.column(target, c)
+    nodes = column_sources(select, dialect)
+    if nodes is None:
+        return
+    for col, found in nodes.items():
+        for table, src_col, same in found:
             if valid(table):
                 ix.col_edges.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))
                 if same:

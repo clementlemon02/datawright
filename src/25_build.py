@@ -4,7 +4,9 @@ def build(dialect=None):
     HOME.mkdir(exist_ok=True)
     ign = HOME / ".gitignore"
     if not ign.exists():
-        ign.write_text("# generated or local-only; imports can contain query text with real values\nindex.db\nindex.tmp\nimports/\nusage.jsonl\n")
+        ign.write_text("# generated or local-only; imports can contain query text with real values\nindex.db\nindex.tmp\ncache.json\nimports/\nusage.jsonl\n")
+    elif "cache.json" not in ign.read_text():
+        ign.write_text(ign.read_text().rstrip("\n") + "\ncache.json\n")
     cfg = yaml.safe_load((HOME / "config.yml").read_text()) or {} if (HOME / "config.yml").exists() else {}
     dialect = dialect or cfg.get("dialect")
     auto = not dialect
@@ -31,7 +33,7 @@ def build(dialect=None):
             exprs[k] = v if k not in exprs or exprs[k] == v else None
     env = env_values((ROOT / f).read_text(encoding="utf-8", errors="replace") for f in files
                      if Path(f).name.startswith(".env") or Path(f).suffix in (".env", ".properties", ".yaml", ".yml"))
-    # ponytail: full rebuild every time (~7 ms a file with column lineage); cache parses by file hash if repos outgrow it
+    load_lineage_cache()  # ponytail: only column lineage is cached; the rest of a build is fast. Per-file caching needs cross-file state keyed in
     connectors, problems = load_connectors()
     for p in problems:
         ix.issue(*p)
@@ -269,6 +271,7 @@ def build(dialect=None):
     counts = [con.execute(f"select count(*) from {t}").fetchone()[0] for t in ("datasets", "edges", "col_edges", "readers", "notes")]
     con.close()
     tmp.replace(DB)
+    save_lineage_cache()
     print(f"indexed {counts[0]} datasets, {counts[1]} lineage edges, {counts[2]} column edges, {counts[3]} readers, "
           f"{counts[4]} notes from {len(files)} files in {time.time() - started:.1f}s, "
           f"dialect {dialect or 'generic'}{' (auto-detected; pin it with dialect: in .data-context/config.yml)' if auto else ''}"

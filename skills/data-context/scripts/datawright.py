@@ -642,20 +642,24 @@ def add_meanings(ix, stmt, target, sources, file, line):
             ix.conversions.add((ds, src.name.lower(), target, out, kind, detail, file, line))
 
 
-def add_columns(ix, target, select, dialect, sources):
+LINEAGE = {"old": {}, "new": {}}  # column lineage by hash of the select: the slow part of a build, and a pure function of the SQL
+
+
+def column_sources(select, dialect):
+    """{output column: [(source table or None, source column, passed through plain)]}, or None when sqlglot can't resolve it."""
+    import hashlib
     from sqlglot import exp
     from sqlglot.lineage import lineage
-    for c in select.named_selects:
-        if c != "*":
-            ix.column(target, c)
+    import sqlglot
+    key = hashlib.sha1(f"{sqlglot.__version__}|{dialect}|{select.sql(dialect=dialect)}".encode()).hexdigest()
+    hit = LINEAGE["old"].get(key, LINEAGE["new"].get(key, False))
+    if hit is not False:
+        LINEAGE["new"][key] = hit
+        return hit
     if isinstance(select, exp.Select):  # these clauses can't change where a column comes from, and their aliases trip the resolver
         select = select.copy()
         for clause in ("group", "order", "having", "qualify"):
             select.set(clause, None)
-    try:
-        nodes = lineage(None, select, None, dialect=dialect)
-    except Exception:
-        return
 
     def plain(node):  # a column passed through, maybe renamed: no function, cast or arithmetic on the way
         e = node.expression
@@ -673,8 +677,39 @@ def add_columns(ix, target, select, dialect, sources):
                 yield None, last, same
         for d in node.downstream:
             yield from leaves(d, last, same)
-    for col, node in nodes.items():
-        for table, src_col, same in leaves(node, col.lower()):
+    try:
+        nodes = lineage(None, select, None, dialect=dialect)
+        out = {col: list(leaves(node, col.lower())) for col, node in nodes.items()}
+    except Exception:
+        out = None
+    LINEAGE["new"][key] = out
+    return out
+
+
+def load_lineage_cache():
+    LINEAGE["new"] = {}
+    try:
+        LINEAGE["old"] = {k: v and {c: [tuple(r) for r in rs] for c, rs in v.items()} for k, v in json.loads((HOME / "cache.json").read_text()).items()}
+    except Exception:
+        LINEAGE["old"] = {}
+
+
+def save_lineage_cache():  # only what this build used, so edited or deleted queries drop out
+    try:
+        (HOME / "cache.json").write_text(json.dumps(LINEAGE["new"]))
+    except OSError:
+        pass
+
+
+def add_columns(ix, target, select, dialect, sources):
+    for c in select.named_selects:
+        if c != "*":
+            ix.column(target, c)
+    nodes = column_sources(select, dialect)
+    if nodes is None:
+        return
+    for col, found in nodes.items():
+        for table, src_col, same in found:
             if valid(table):
                 ix.col_edges.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))
                 if same:
@@ -1777,7 +1812,9 @@ def build(dialect=None):
     HOME.mkdir(exist_ok=True)
     ign = HOME / ".gitignore"
     if not ign.exists():
-        ign.write_text("# generated or local-only; imports can contain query text with real values\nindex.db\nindex.tmp\nimports/\nusage.jsonl\n")
+        ign.write_text("# generated or local-only; imports can contain query text with real values\nindex.db\nindex.tmp\ncache.json\nimports/\nusage.jsonl\n")
+    elif "cache.json" not in ign.read_text():
+        ign.write_text(ign.read_text().rstrip("\n") + "\ncache.json\n")
     cfg = yaml.safe_load((HOME / "config.yml").read_text()) or {} if (HOME / "config.yml").exists() else {}
     dialect = dialect or cfg.get("dialect")
     auto = not dialect
@@ -1804,7 +1841,7 @@ def build(dialect=None):
             exprs[k] = v if k not in exprs or exprs[k] == v else None
     env = env_values((ROOT / f).read_text(encoding="utf-8", errors="replace") for f in files
                      if Path(f).name.startswith(".env") or Path(f).suffix in (".env", ".properties", ".yaml", ".yml"))
-    # ponytail: full rebuild every time (~7 ms a file with column lineage); cache parses by file hash if repos outgrow it
+    load_lineage_cache()  # ponytail: only column lineage is cached; the rest of a build is fast. Per-file caching needs cross-file state keyed in
     connectors, problems = load_connectors()
     for p in problems:
         ix.issue(*p)
@@ -2042,6 +2079,7 @@ def build(dialect=None):
     counts = [con.execute(f"select count(*) from {t}").fetchone()[0] for t in ("datasets", "edges", "col_edges", "readers", "notes")]
     con.close()
     tmp.replace(DB)
+    save_lineage_cache()
     print(f"indexed {counts[0]} datasets, {counts[1]} lineage edges, {counts[2]} column edges, {counts[3]} readers, "
           f"{counts[4]} notes from {len(files)} files in {time.time() - started:.1f}s, "
           f"dialect {dialect or 'generic'}{' (auto-detected; pin it with dialect: in .data-context/config.yml)' if auto else ''}"

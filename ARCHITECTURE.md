@@ -43,7 +43,7 @@ Most of what an agent needs to know about data can be worked out mechanically. O
 |---|---|---|
 | What | Datasets, columns, table and column lineage, producer file and line, the Airflow DAG, task and schedule that run it, readers, change history, warehouse schema, query-log usage | Grain, keys, meaning, owners, gotchas, corrections, business terms |
 | Made by | `datawright build`: a SQL parser (sqlglot; dialect taken from what the repo declares, such as its dbt adapter or `.hql` files, and checked by parsing) over the repo's SQL; SQL inside Python, with constants, f-strings, `+` and `.format()` resolved; dbt manifests; Airflow DAGs and tasks, including ones built in loops; Kafka topics as datasets, through Flink SQL connector tables, Java and Scala Flink and Spark jobs, Spark Structured Streaming and StarRocks Routine Load, across several repos; Spark table and JDBC calls; and optional warehouse and catalog exports (OpenLineage, DataHub, OpenMetadata) | Agents and humans, with `datawright set` and `datawright note` |
-| Stored as | `.data-context/index.db` (SQLite, gitignored, rebuilt in seconds) | `.data-context/notes/<dataset>.yml`, `glossary.yml` (small, committed, reviewed) |
+| Stored as | `.data-context/index.db` (SQLite, gitignored, rebuilt in seconds; column lineage is cached by query hash in `cache.json`) | `.data-context/notes/<dataset>.yml`, `glossary.yml` (small, committed, reviewed) |
 | Model tokens | Zero | Only for what can't be derived |
 
 Four rules keep it fast and keep it from turning into a pile of Markdown:
