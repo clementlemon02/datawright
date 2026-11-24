@@ -245,7 +245,7 @@ def column_sources(select, dialect):
     from sqlglot import exp
     from sqlglot.lineage import lineage
     import sqlglot
-    key = hashlib.sha1(f"{sqlglot.__version__}|{dialect}|{select.sql(dialect=dialect)}".encode()).hexdigest()
+    key = hashlib.sha1(f"{sqlglot.__version__}|v2|{dialect}|{select.sql(dialect=dialect)}".encode()).hexdigest()
     hit = LINEAGE["old"].get(key, LINEAGE["new"].get(key, False))
     if hit is not False:
         LINEAGE["new"][key] = hit
@@ -264,6 +264,11 @@ def column_sources(select, dialect):
         name = node.name.split(".")[-1].lower()
         last = last if name == "*" else name
         same = same and plain(node)
+        if isinstance(node.expression, exp.Star) and len(node.downstream) > 1:  # a column through a `select *` over a join: which table has it isn't known yet
+            tables = sorted({t for d in node.downstream for t, _, _ in leaves(d, last, same) if t})
+            if len(tables) > 1:
+                yield tuple(tables), last, same
+                return
         if not node.downstream:
             if isinstance(node.source, exp.Table):
                 yield tname(node.source), last, same
@@ -283,7 +288,8 @@ def column_sources(select, dialect):
 def load_lineage_cache():
     LINEAGE["new"] = {}
     try:
-        LINEAGE["old"] = {k: v and {c: [tuple(r) for r in rs] for c, rs in v.items()} for k, v in json.loads((HOME / "cache.json").read_text()).items()}
+        LINEAGE["old"] = {k: v and {c: [(tuple(r[0]) if isinstance(r[0], list) else r[0], r[1], r[2]) for r in rs] for c, rs in v.items()}
+                          for k, v in json.loads((HOME / "cache.json").read_text()).items()}
     except Exception:
         LINEAGE["old"] = {}
 
@@ -304,7 +310,9 @@ def add_columns(ix, target, select, dialect, sources, how="direct"):
         return
     for col, found in nodes.items():
         for table, src_col, same in found:
-            if valid(table):
+            if isinstance(table, tuple):  # settled at the end of the build, from the columns each table is known to have
+                ix.pending_star.append((f"{target}.{col.lower()}", table, src_col))
+            elif valid(table):
                 ix.col_edge((f"{table}.{src_col}", f"{target}.{col.lower()}"), how)
                 if same:
                     ix.identity.add((f"{table}.{src_col}", f"{target}.{col.lower()}"))

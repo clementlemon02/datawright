@@ -74,6 +74,7 @@ FILES = {
     "lake/jobs/copy_many.py": 'def copy(src, dst):\n    spark.table(src).write.saveAsTable(dst)\n\ncopy("raw.a", "stg.a")\ncopy("raw.b", "stg.b")\nfor t in ["c", "d"]:\n    spark.table(f"raw.{t}").write.saveAsTable(f"stg.{t}")\n',
     "lake/config/tables.yaml": "tables:\n  - {name: invoices, schema: finance}\n  - {name: refunds, schema: finance}\n",
     "lake/dags/factory.py": 'import yaml\nfrom pathlib import Path\nfrom airflow import DAG\nfrom airflow.operators.python import PythonOperator\nconf = yaml.safe_load(open(Path(__file__).parent.parent / "config" / "tables.yaml"))\nwith DAG("factory", schedule="@daily") as dag:\n    for t in conf["tables"]:\n        PythonOperator(task_id=f"load_{t[\'name\']}", python_callable=print)\n        spark.table(f"{t[\'schema\']}.{t[\'name\']}_raw").write.saveAsTable(f"{t.get(\'schema\')}.{t[\'name\']}")\n',
+    "lake/star_join.sql": 'create table sj.a (id int, name text);\ncreate table sj.b (id int, region text);\ncreate table sj.out as select id, name, region from (select * from sj.a join sj.b using (id)) x;\n',
     "lake/jobs/templated.py": 'src = "staging.payments"\nspark.sql(f"insert into mart.tmpl_probe select amount as amt from {src}")\n',
     "lake/jobs/click_job.py": 'import click\n\n@click.command()\n@click.argument("source")\n@click.option("--target", "-t", default="gold.default_out")\ndef main(source, target):\n    spark.table(f"silver.{source}").write.saveAsTable(target)\n',
     "lake/jobs/weekly.py": 'import pandas as pd\ndf = pd.read_sql("select a, b from app.daily where a > 1", eng)\npd.read_sql("select count(*) from app.audit", eng)\ndf.to_sql("weekly", eng, schema="app", if_exists="replace")\n',
@@ -593,6 +594,8 @@ def main():
     with sqlite3.connect(repo / ".data-context/index.db") as c:
         how = dict(c.execute("select dst, how from col_edges where dst in ('mart.revenue_daily.revenue', 'mart.tmpl_probe.amt')"))
         assert how == {"mart.revenue_daily.revenue": "direct", "mart.tmpl_probe.amt": "inferred"}, how
+        star = set(c.execute("select src, how from col_edges where dst like 'sj.out.%'"))  # select * over a join: only the table that has the column
+        assert ("sj.a.name", "inferred") in star and ("sj.b.region", "inferred") in star and not any(x[0] in ("sj.b.name", "sj.a.region") for x in star), star
         assert {r[0] for r in c.execute("select how from joins")} <= {"direct", "declared", "inferred"}
     assert "amt ← staging.payments.amount (inferred)" in cli("card", "mart.tmpl_probe")
     assert "mart.tmpl_probe.amt (inferred link)" in cli("impact", "staging.payments.amount"), "a column reached only through an inferred link says so"
